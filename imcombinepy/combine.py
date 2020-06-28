@@ -269,7 +269,7 @@ def imcombine(
     # Copied from ccdproc v 2.0.1
     # https://github.com/astropy/ccdproc/blob/b9ec64dfb59aac1d9ca500ad172c4eb31ec305f8/ccdproc/combiner.py#L710
     # Set a memory use factor based on profiling
-    combmeth = _set_cenfunc(combine)
+    combmeth = _set_combfunc(combine)
     memory_factor = 3 if combmeth == "median" else 2
     memory_factor *= 1.5
     mem_req = memory_factor * stacksize
