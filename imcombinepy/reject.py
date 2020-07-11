@@ -129,13 +129,14 @@ def sigclip_mask(
     ddof=0, nkeep=3, maxrej=None, cenfunc='median',
     axis=0, full=True,
 ):
-    ''' only along axis=0
+    ''' Only along axis=0.
+
     Parameters
     ----------
-    arr : nd-array
+    arr : ndarray
         The array to be subjected for masking. ``arr`` and ``mask`` must
         have the identical shape.
-    mask : nd-array, optional.
+    mask : ndarray, optional.
         The initial mask provided prior to any rejection. ``arr`` and
         ``mask`` must have the identical shape.
     sigma : float-like, optional.
@@ -144,7 +145,7 @@ def sigclip_mask(
         The maximum number of iterations to do the sigma-clipping. It is
         silently converted to int if it is not.
     ddof : int, optional.
-        The delta-degrees of freedom (see `~np.std`). It is silently
+        The delta-degrees of freedom (see `~numpy.std`). It is silently
         converted to int if it is not.
     nkeep : float or int, optional.
         The minimum number of pixels that should be left after
@@ -159,9 +160,11 @@ def sigclip_mask(
         reject can be set in IRAF. See Note.
     cenfunc : str, optional.
         The centering function to be used.
+
           * median if  ``cenfunc in ['med', 'medi', 'median']``
           * average if ``cenfunc in ['avg', 'average', 'mean']``
           * lower median if ``cenfunc in ['lmed', 'lmd', 'lmedian']``
+
         The lower median means the median which takes the lower value
         when even number of data is left. This is suggested to be robust
         against cosmic-ray hit according to IRAF IMCOMBINE manual.
@@ -170,13 +173,13 @@ def sigclip_mask(
     full : bool, optional.
         Whether to return full results. See Return.
 
-    Return
-    ------
+    Returns
+    -------
     o_mask : ndarray of bool
         The mask of the same shape as ``arr`` and ``mask``. Note the
         oritinal ``mask`` is propagated, so pure sigma-clipping mask is
         obtained by ``o_mask^mask``, because all pixel
-    o_low, o_upp : ndarray of flat
+    o_low, o_upp : ndarray of ``dtype=dtype``
         Returned only if ``full = True``. The lower and upper bounds
         used for sigma clipping. Data with ``(arr < o_low) | (o_upp <
         arr)`` are masked. Shape of ``arr.shape[1:]``.
@@ -187,19 +190,21 @@ def sigclip_mask(
         True``, this is an int, the maximum value of the otherwise
         ``(n-1)``-D array.
     o_code : ndarray of uint8
-        Returned only if ``full = True``. Each element is a uint8 value
-        with
+        Returned only if ``full = True``. Each element is a ``uint8``
+        value with
           *      (0): maxiters reached without any flag below
           * 1-th (1): maxiters == 0 (no iteration happened)
           * 2-th (2): iteration finished before maxiters reached
           * 3-th (4): remaining ndata < nkeep reached
           * 4-th (8): rejected ndata > maxrej reached
+        The code of 2 is, for example, 0010 in binary, so the 2-th
+        condition flagged.
 
-    Note
-    ----
-    The central value is then first determined by ``cenfunc``. The
-    "sigma" value is calculated by ``nanstd`` with the given ``ddof``.
-    After the first iteration, any value ``arr < sigma_lower*std`` or
+    Notes
+    -----
+    The central value is first determined by ``cenfunc``. The "sigma"
+    value is calculated by ``nanstd`` with the given ``ddof``. After the
+    first iteration, any value ``arr < sigma_lower*std`` or
     ``sigma_upper*std < arr`` is replaced with ``nan`` internally (not
     modifying the original ``arr`` of course). At each position (pixel
     for 2-D image, voxel for 3-D image, etc), the number of rejected
@@ -217,13 +222,16 @@ def sigclip_mask(
     ``nanmax`` will be given as lower and upper bounds as above. The
     ``o_code`` will hint what happened.
 
-    See ``bench_isnan.md`` why I only used ``nanXXX`` functions.
+    See `bench_isnan.md`_ why ``nanXXX`` functions are used.
 
-    Tips are
-    1. The number of rejected points: ``np.sum(o_mask, axis=0)``
-    2. The mask excluding original mask, i.e., only the points that are
-       rejected by rejection is ``o_mask ^ mask`` (because ``o_mask =
-       mask | rejected_positions``)
+    .. _bench_isnan.md: https://github.com/ysBach/imcombinepy/tree/master/bench/bench_isnan.md
+
+    .. note::
+        The number of rejected points: ``np.sum(o_mask, axis=0)``.
+
+        The mask excluding original mask, i.e., only the points that are
+        rejected by rejection is ``o_mask ^ mask`` (because ``o_mask =
+        mask | rejected_positions``).
     '''
     if axis != 0:
         raise ValueError("Currently only axis=0 is supported")

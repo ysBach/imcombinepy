@@ -3,15 +3,6 @@ From the benchmark below, I find
 1. The ``median`` and ``nanmedian`` of bottleneck has nearly no speed difference (!)
 1. Testing the existence of at least one NaN has a little bit of overhead.
 
-By tuning the size of ``data3d`` to ``(10, 1000, 2000)`` (10 times larger data), I found
-1. Most numpy functions take longer time than linear extrapolation (x10+ slower)
-1. All bottleneck functions scale nearly linearly (better than numpy for long computation)
-1. NaN checking scales quite linearly.
-
-Therefore, the conclusion is
-* Question: Is it better to follow this algorithm: "check if there's any nan in data, use ``np.mean`` if not, to boost the calculation".
-* Answer: For our case, **NO**. ``bn.nanmean`` takes time t_bn, ``np.mean`` takes time t_np, and ``np.any(np.isnan(data))`` takes t_nan. Then t_bn ~ t_np + t_nan, so there's only little gain (sometimes even slower).
-
 
 ```python
 import numpy as np
@@ -86,3 +77,14 @@ print()
 # 1.24 ms +/- 128 µs per loop
 
 ```
+
+By tuning the size of ``data3d`` to ``(10, 1000, 2000)`` (10 times larger data), I found
+1. Most numpy functions take longer time than that expectred from a linear extrapolation (x10+ slower)
+1. All bottleneck functions scale nearly linearly (better than numpy for long computation)
+1. NaN checking scales quite linearly.
+
+Therefore, the conclusion is
+* Question: Is it better to follow this algorithm: "check if there's any nan in data, if no, use ``np.mean`` to boost the calculation".
+* Answer: For our case, **NO**. If ``bn.nanmean`` takes time ``t_bn``, ``np.mean`` takes time ``t_np``, and ``np.any(np.isnan(data))`` takes ``t_nan``, roughly ``t_bn ~ t_np + t_nan``, so there's only little gain (sometimes even slower).
+
+Therefore, I did not use, e.g., ``np.mean``, but always used ``bn.nanmean``.

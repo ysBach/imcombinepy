@@ -6,7 +6,7 @@ import numpy as np
 from astropy.io import fits
 
 from .reject import sigclip_mask
-from .util import (_get_combine_shape, _set_calc_szw, _set_cenfunc,
+from .util import (_get_combine_shape, _set_calc_zsw, _set_cenfunc,
                    _set_combfunc, _set_int_dtype, _set_keeprej, _set_mask,
                    _set_reject, _set_sigma, update_hdr, write2fits)
 
@@ -39,11 +39,13 @@ lsigma    , hsigma     : sigma uple
 '''
 
 '''
+
 # TODO:
 add blank option
 add logfile
 add statsec with input, output, overlap
 add scale, zero, weight
+add scale_sample, zero_sample
 add mode for scale, zero, weight?
 add memlimit behaviour
 '''
@@ -51,93 +53,296 @@ add memlimit behaviour
 
 def imcombine(
         fpaths=None, fpattern=None, mask=None, ext=0,
-        output=None, output_mask=None, output_nrej=None,
-        output_sigma=None, output_low=None, output_upp=None,
-        output_rejcode=None,
-        fits_section=None, blank=np.nan,
-        imcmb_key='$I', exposure_key="EXPTIME",
-        logfile=None,
-        combine='average', reject=None,
-        dtype='float32', offsets=None,
-        scale=None, zero=None, weight=None, statsec=None,
-        scale_kw={}, zero_kw={},
-        thresholds=(-np.inf, np.inf),
-        n_minmax=(1, 1),
-        nkeep=1, maxrej=None,
+        fits_section=None,
+        blank=np.nan,
+        offsets=None,
+        thresholds=[-np.inf, np.inf],
+        zero=None, scale=None, weight=None, statsec=None,
+        zero_kw={'cenfunc': 'median', 'stdfunc': 'std', 'std_ddof': 1},
+        scale_kw={'cenfunc': 'median', 'stdfunc': 'std', 'std_ddof': 1},
+        scale_sample=None, zero_sample=None,
+        reject=None,
         cenfunc='median',
-        sigma=(3., 3.), maxiters=1, ddof=1,
+        sigma=[3., 3.], maxiters=3, ddof=1, nkeep=1, maxrej=None,
+        n_minmax=[1, 1],
         rdnoise=0., gain=1., snoise=0.,
         pclip=-0.5,
+        logfile=None,
+        combine='average',
+        dtype='float32',
         memlimit=2.5e+9,
         verbose=False,
         full=False,
+        imcmb_key='$I', exposure_key="EXPTIME",
+        output=None, output_mask=None, output_nrej=None,
+        output_sigma=None, output_low=None, output_upp=None,
+        output_rejcode=None,
         **kwargs
 ):
     '''A helper function for ndcombine to cope with FITS files.
+
+    Parameters
+    ----------
     fpaths : list-like of path-like, optional.
         The list of file paths to be combined. These must be FITS files.
         One and only one of ``fpaths`` or ``fpattern`` must be provided.
-    ext : int, optional.
-        The extension to be used in loading the FITS files.
+
     fpattern : str, optional.
         The ``os.glob`` pattern for files (e.g., ``"2020*[012].fits"``).
         One and only one of ``fpaths`` or ``fpattern`` must be provided.
-    output : path-like, optional
-        The path to the final combined FITS file. It has dtype of
-        ``dtype`` and dimension ``N``, identical to each input image.
-        Optional keyword arguments for ``fits.writeto()`` can be
-        provided as ``**kwargs``.
-    output_xxx : path-like, optional
-        The output path to the mask (``dtype=uint8``, ``N+1``-D array
-        where ``N`` is the dimension of each image file), number of
-        rejected pixels at each position (``dtype=uint8``, ``uint16``,
-        or ``uint32`` depending on ``ncombine``, ``N``-D array), final
-        ``nanstd(ddof=ddof)`` result  (``dtype=dtype``, ``N``-D array),
-        lower and upper bounds for rejection (``dtype=dtype``, ``N``-D
-        array), and the integer codes for the rejection algorithm
-        (``dtype=uint8``, ``N``-D array).
-    imcmb_key : str
-        The thing to add as ``IMCMBnnn`` in the output FITS file. If
-        ``"$I"``, following the default of IRAF, the file's name will be
-        added. Otherwise, it should be a header keyword. If not exist, a
-        null string will be added. If a null string (``""``), it does
-        not set the ``IMCMBnnn`` keywords nor deletes any existing
-        keyword.
-    scale_kw, zero_kw : dict
-        The keyword arguments for ``sigmaclip_inf`` same as those of
-        ``ndcombine``:
-            * ``sigma_lower``, ``sigma_upper``
-            * ``ddof``
-            * ``cenfunc``
-            * ``outfunc`` : see ``cenfunc`` of ``ndcombine``.
+
+    mask : ndarray, optional.
+        The mask of bad pixels. If given, it must satisfy
+        ``mask.shape[0]`` identical to the number of images.
+
+        .. note::
+            If the user ever want to use masking, it's more convenient
+            to use ``'MASK'`` extension to the FITS files or replace
+            bad pixel to very large or small numbers and use
+            ``thresholds``.
+
+    ext : int, optional.
+        The extension to be used in loading the FITS files.
+
+    offsets : str or (n, m)-d array
+        If array, it must have shape such that ``n`` is the number of
+        images and ``m`` is the dimension of the images (offsets in x,
+        y, z, ... order, not pythonic order), and it is directly
+        regarded as the "raw offsets". If ``str``, the "raw offsets" are
+        obtained by the followings:
+            * ``"wcs"`` or ``"world"``:
+                Raw offsets are the ``CRPIX`` values in the header.
+            * ``"physical"``, ``"phys"``, or ``"phy"``:
+                Raw offsets are the ``LTV`` values in the header. The
+                physical coordinate system is defined by the IRAF-like
+                ``LTM``/``LTV`` keywords define the offsets. Currently,
+                only the cases when ``LTMi_j`` is 0 or 1 can be managed.
+                Otherwise, we need scaling and it is not supported now.
+        For these cases, the raw offsets for each frame is nothing but
+        an ``m``-D tuple consists of ``offset_raw[i] = CRPIX{m-i}`` or
+        ``LTV{m-i}[_{m-i}]``. The reason to subtract ``i`` is because
+        python has ``z, y, x`` order of indexing while WCS information
+        is in ``x, y, z`` order.
+
+        The raw offsets are then modified such that the minimum offsets
+        in each axis becomes zero (in pythonic way,
+        ``np.max(offsets, axis=0) - offsets``). The offsets are used
+        to determine the final output image's shape.
+
+        .. note::
+            Though IRAF imcombine says it calculates offsets from the
+            0-th image center if ``offsets="wcs"``, it seems it acutally
+            uses ``CRPIX`` from the header... I couldn't find how IRAF
+            does offset calculation for WCS, it's not reproducible using
+            rounding... Even using WCS info correctly, it's not
+            reproducible.
+            Very curious. But that mismatch is at most 2 pixels, and
+            mostly 0 pixel, so let me not bothered by it.
+
+    thresholds : 2-float list-like, optional.
+        The thresholds ``(lower, upper)`` applied to all images before
+        any rejection/combination. Default is no thresholding,
+        ``(-np.inf, +np.inf)``. One possible usage is to replace bad
+        pixel to very large or small numbers and use this thresholding.
+
+    zero : str or 1-d array
+        The "zero" value to subtract from each image _after_
+        thresholding, but _before_ scaling/rejection/combination. If an
+        array, it is directly subtracted from each image, (so it must
+        have size identical to the number of images). If ``str``:
+            * ``'avg'``, ``'average'``, ``'mean'``:
+                Subtract the average value of each image from itself.
+            * ``'med'``, ``'medi'``, ``'median'``:
+                Subtract the median value of each image from itself.
+            * ``'avg_sc'``, ``'average_sc'``, ``'mean_sc'``:
+                Subtract the sigma-clipped average value of each image
+                from itself.
+            * ``'med_sc'``, ``'medi_sc'``, ``'median_sc'``:
+                Subtract the sigma-clipped median value of each image
+                from itself.
+        For options for sigma-clipped statistics, see ``zero_kw``.
+
+        .. note::
+            By using ``zero="med_sc"``, the user can crudely subtract
+            sky value from each frame.
+
+    scale : str or 1-d array
+        The way to scale each image _after_ thresholding/zeroing, but
+        _before_ rejection/combination. If an array, it is directly
+        understood as the "raw scales", and it must have size identical
+        to the number of images. If ``str``:
+            * ``"exp"``, ``"expos"``, ``"exposure"``, or ``"exptime"``:
+                Uses the exposure time for raw scale. The header keyword
+                specified by ``exposure_key`` will be searched for each
+                input FITS file.
+            * ``'avg'``, ``'average'``, ``'mean'``:
+                Uses the average value of each image as raw scales.
+            * ``'med'``, ``'medi'``, ``'median'``:
+                Uses the median value of each image as raw scales.
+            * ``'avg_sc'``, ``'average_sc'``, ``'mean_sc'``:
+                Uses the sigma-clipped average value of each image as
+                raw scales.
+            * ``'med_sc'``, ``'medi_sc'``, ``'median_sc'``:
+                Uses the sigma-clipped median value of each image as raw
+                scales.
+        The true scale is obtained by ``scales / scales[0]``, following
+        IRAF's convention. For options for sigma-clipped statistics,
+        see ``scale_kw``.
+
+        .. note::
+            Using ``scale="avg_sc"`` is useful for flat combining.
+
+    zero_kw, scale_kw : dict
         Used only if ``scale`` or ``zero`` are sigma-clipped mean,
         median, etc (ending with ``_sc`` such as ``median_sc``,
-        ``avg_sc``).
+        ``avg_sc``). The keyword arguments for astropy's
+        `~astropy.stats.sigma_clipped_stats`. By default,
+        ``std_ddof=1``, which is different from that of original
+        ``sigma_clipped_stats``.
 
-    Return
-    ------
+        .. warning::
+            Do not specify ``axis``.
+
+    sigma : 2-float list-like, optional.
+        The sigma-factors to be used for sigma-clip rejeciton in
+        ``(sigma_lower, sigma_upper)``. Defaults to ``(3, 3)``, which
+        means 3-sigma clipping from the "sigma" values determined by the
+        method specified by ``reject``.
+
+    maxiters : int, optional.
+        The maximum number of iterations to do the rejection (for
+        sigma-clipping). It is silently converted to ``int`` if it is
+        not.
+
+    ddof : int, optional.
+        The delta-degrees of freedom (see `~numpy.std`). It is silently
+        converted to ``int`` if it is not.
+
+    nkeep : float or int, optional.
+        The minimum number of pixels that should be left after
+        rejection. If ``nkeep < 1``, it is regarded as fraction of the
+        total number of pixels along the axis to combine. This
+        corresponds to _positive_ ``nkeep`` parameter of IRAF IMCOMBINE.
+        If number of remaining non-nan value is fewer than ``nkeep``,
+        the masks at that position will be reverted to the previous
+        iteration, and rejection code will be added by number 4.
+
+    maxrej : float or int, optional.
+        The maximum number of pixels that can be rejected during the
+        rejection. If ``maxrej < 1``, it is regarded as fraction of the
+        total number of pixels along the axis to combine. This
+        corresponds to _negative_ ``nkeep`` parameter of IRAF IMCOMBINE.
+        In IRAF, only one of ``nkeep`` and ``maxrej`` can be set.
+        If number of rejected pixels at a position exceeds ``maxrej``,
+        the masks at that position will be reverted to the previous
+        iteration, and rejection code will be added by number 8.
+
+    cenfunc : str, optional.
+        The centering function to be used in rejection algorithm.
+
+          * median if  ``cenfunc in ['med', 'medi', 'median']``
+          * average if ``cenfunc in ['avg', 'average', 'mean']``
+          * lower median if ``cenfunc in ['lmed', 'lmd', 'lmedian']``
+
+        The lower median means the median which takes the lower value
+        when even number of data is left. This is suggested to be robust
+        against cosmic-ray hit according to IRAF IMCOMBINE manual.
+
+    n_minmax : 2-float or 2-int list-like, optional.
+        The number of low and high pixels to be rejected by the "minmax"
+        algorithm. These numbers are converted to fractions of the total
+        number of input images so that if no rejections have taken place
+        the specified number of pixels are rejected while if pixels have
+        been rejected by masking, thresholding, or non-overlap, then the
+        fraction of the remaining pixels, truncated to an integer, is
+        used.
+
+    rdnoise, gain, snoise : float, optional.
+        The readnoise of the detector in the unit of electrons, electron
+        gain of the detector in the unit of elctrons/DN (or
+        electrons/ADU), and sensitivity noise as a fraction. Used only
+        if ``reject="ccdclip"`` and/or ``combine="nmodel"``.
+
+        The variance of a single pixel in an image when these are used,
+
+        .. math::
+            V_\mathrm{DN}
+            = ( \mathtt{rdnoise}/\mathtt{gain} )^2
+            + \mathrm{DN}/\mathtt{gain}
+            + ( \mathtt{snoise} * \mathrm{DN} )^2
+
+        .. math::
+            V_\mathrm{electron}
+            = (\mathtt{rdnoise})^2
+            + (\mathtt{gain} * \mathrm{DN})^2
+            + (\mathtt{snoise} * \mathtt{gain} * \mathrm{DN})^2
+
+    pclip : float, optional.
+        The parameter for ``reject="pclip"``. If ``abs(pclip) >= 1``,
+        then it specifies a number of pixels above or below the median
+        to use for computing the clipping sigma. If ``abs(pclip) < 1``,
+        then it specifies the fraction of the pixels above or below the
+        median to use. A positive value selects a point above the median
+        and a negative value selects a point below the median. The
+        default of ``-0.5`` selects approximately the quartile point.
+        Better to use negative value to avoid cosmic-ray contamination.
+
+    imcmb_key : str
+        The thing to add as ``IMCMBnnn`` in the output FITS file header.
+        If ``"$I"``, following the default of IRAF, the file's name will
+        be added. Otherwise, it should be a header keyword. If the key
+        does not exist in ``nnn``-th file, a null string will be added.
+        If a null string (``imcmb_key=""``), it does not set the
+        ``IMCMBnnn`` keywords nor deletes any existing keyword.
+
+        .. warning::
+            If more than 999 files are combined, only the first 999
+            files will be recorded in the header.
+
+    output : path-like, optional
+        The path to the final combined FITS file. It has dtype of
+        ``dtype`` and dimension identical to each input image.
+        Optional keyword arguments for ``fits.writeto()`` can be
+        provided as ``**kwargs``.
+
+    output_xxx : path-like, optional
+        The output path to the mask, number of rejected pixels at each
+        position, final ``nanstd(ddof=ddof)`` result,
+        lower and upper bounds for rejection, and the integer codes for
+        the rejection algorithm (see ``mask_total``, ``mask_rej``,
+        ``sigma``, ``low``, ``upp``, and ``rejcode`` in Returns.)
+
+    Returns
+    -------
     comb : `~astropy.fits.PrimaryHDU`
         The combined FITS file.
+
     sigma : ndarray
         The sigma map
+
     mask_total : ndarray (dtype bool)
         The full mask, ``N+1``-D. Identical to original FITS files'
         masks propagated with ``| mask_rej | mask_thresh`` below. The
         total number of rejected pixels at each position can be obtained
         by ``np.sum(mask_total, axis=0)``.
+
     mask_rej, mask_thresh : ndarray(dtype bool)
         The masks (``N``-D) from the rejection process and thresholding
         process (``thresholds``). Threshold is done prior to any
         rejection or scaling/zeroing. Number of rejected pixels at each
         position for each process can be obtained by, e.g.,
-        ``np.sum(mask_rej, axis=0)``.
+        ``nrej = np.sum(mask_rej, axis=0)``. Note that ``mask_rej``
+        consumes less memory than ``nrej``.
+
     low, upp : ndarray (dtype ``dtype``)
         The lower and upper bounds (``N``-D) to reject pixel values at
         each position (``(data < low) | (upp < data)`` are removed).
+
     nit : ndarray (dtype uint8)
         The number of iterations (``N``-D) used in rejection process. I
         cannot think of iterations larger than 100, so set the dtype to
         ``uint8`` to reduce memory and filesize.
+
     rejcode : ndarray (dtype uint8)
         The exit code from rejection (``N``-D). See each rejection's
         docstring.
@@ -232,13 +437,6 @@ def imcombine(
             # NOTE: the indexing in python is [z, y, x] order!!
             offsets[i, ] = [hdr[f'CRPIX{i}'] for i in range(ndim, 0, -1)]
             '''
-            Though IRAF imcombine says it calculates offsets from the
-            0-th image center, it seems it acutally uses CRPIX...
-            I couldn't find how IRAF does offset calculation for WCS,
-            it's not reproducible using rounding... Even using WCS info
-            correctly, it's not reproducible. Very curious. But that
-            mismatch is at most 2 pixels, and mostly 0 pixel, so let me
-            not bothered by it.
             # Code if using WCS, which may be much slower (but accurate?)
             # Find the center's pixel position in w_ref, in nearest int
             from astropy.wcs import WCS
@@ -410,22 +608,203 @@ def imcombine(
 
 # --------------------------------------------------------------------------- #
 def ndcombine(
-        arr, mask=None,
-        logfile=None,
-        combine='average', reject=None,
+        arr, mask=None, copy=True,
         offsets=None,
-        scale=None, zero=None, weight=None, statsec=None,
-        scale_kw={}, zero_kw={},
-        thresholds=(-np.inf, np.inf),
-        n_minmax=(1, 1),
-        nkeep=1, maxrej=None,
+        thresholds=[-np.inf, np.inf],
+        zero=None, scale=None, weight=None, statsec=None,
+        zero_kw={'cenfunc': 'median', 'stdfunc': 'std', 'std_ddof': 1},
+        scale_kw={'cenfunc': 'median', 'stdfunc': 'std', 'std_ddof': 1},
+        scale_sample=None, zero_sample=None,
+        reject=None,
         cenfunc='median',
-        sigma=(3., 3.), maxiters=1, ddof=1,
+        sigma=[3., 3.], maxiters=3, ddof=1, nkeep=1, maxrej=None,
+        n_minmax=[1, 1],
         rdnoise=0., gain=1., snoise=0.,
-        pclip=-0.5, full=True
+        pclip=-0.5,
+        combine='average',
+        dtype='float32',
+        memlimit=2.5e+9,
+        verbose=False,
+        full=False
 ):
     ''' Combines the given arr assuming no additional offsets.
+
+    Parameters
+    ----------
+    arr : ndarray
+        The array to be combined along axis 0.
+
+    mask : ndarray, optional.
+        The mask of bad pixels. If given, it must satisfy
+        ``mask.shape[0]`` identical to the number of images.
+
+    copy : bool, optional.
+        Whether to copy the input array. Set to ``True`` if you want to
+        keep the original array unchanged.
+
+    offsets : (n, m)-d array
+        If given, it must have shape such that ``n`` is the number of
+        images and ``m`` is the dimension of the images (offsets in x,
+        y, z, ... order, not pythonic order), and it is directly
+        regarded as the "raw offsets".
+
+        The raw offsets are then modified such that the minimum offsets
+        in each axis becomes zero (in pythonic way,
+        ``np.max(offsets, axis=0) - offsets``). The offsets are used
+        to determine the final output image's shape.
+
+    thresholds : 2-float list-like, optional.
+        The thresholds ``(lower, upper)`` applied to all images before
+        any rejection/combination. Default is no thresholding,
+        ``(-np.inf, +np.inf)``. One possible usage is to replace bad
+        pixel to very large or small numbers and use this thresholding.
+
+    zero : str or 1-d array
+        The "zero" value to subtract from each image _after_
+        thresholding, but _before_ scaling/rejection/combination. If an
+        array, it is directly subtracted from each image, (so it must
+        have size identical to the number of images). If ``str``:
+            * ``'avg'``, ``'average'``, ``'mean'``:
+                Subtract the average value of each image from itself.
+            * ``'med'``, ``'medi'``, ``'median'``:
+                Subtract the median value of each image from itself.
+            * ``'avg_sc'``, ``'average_sc'``, ``'mean_sc'``:
+                Subtract the sigma-clipped average value of each image
+                from itself.
+            * ``'med_sc'``, ``'medi_sc'``, ``'median_sc'``:
+                Subtract the sigma-clipped median value of each image
+                from itself.
+        For options for sigma-clipped statistics, see ``zero_kw``.
+
+        .. note::
+            By using ``zero="med_sc"``, the user can crudely subtract
+            sky value from each frame.
+
+    scale : str or 1-d array
+        The way to scale each image _after_ thresholding/zeroing, but
+        _before_ rejection/combination. If an array, it is directly
+        understood as the "raw scales", and it must have size identical
+        to the number of images. If ``str``:
+            * ``"exp"``, ``"expos"``, ``"exposure"``, or ``"exptime"``:
+                Uses the exposure time for raw scale. The header keyword
+                specified by ``exposure_key`` will be searched for each
+                input FITS file.
+            * ``'avg'``, ``'average'``, ``'mean'``:
+                Uses the average value of each image as raw scales.
+            * ``'med'``, ``'medi'``, ``'median'``:
+                Uses the median value of each image as raw scales.
+            * ``'avg_sc'``, ``'average_sc'``, ``'mean_sc'``:
+                Uses the sigma-clipped average value of each image as
+                raw scales.
+            * ``'med_sc'``, ``'medi_sc'``, ``'median_sc'``:
+                Uses the sigma-clipped median value of each image as raw
+                scales.
+        The true scale is obtained by ``scales / scales[0]``, following
+        IRAF's convention. For options for sigma-clipped statistics,
+        see ``scale_kw``.
+
+        .. note::
+            Using ``scale="avg_sc"`` is useful for flat combining.
+
+    zero_kw, scale_kw : dict
+        Used only if ``scale`` or ``zero`` are sigma-clipped mean,
+        median, etc (ending with ``_sc`` such as ``median_sc``,
+        ``avg_sc``). The keyword arguments for astropy's
+        `~astropy.stats.sigma_clipped_stats`. By default,
+        ``std_ddof=1``, which is different from that of original
+        ``sigma_clipped_stats``.
+
+        .. warning::
+            Do not specify ``axis``.
+
+    sigma : 2-float list-like, optional.
+        The sigma-factors to be used for sigma-clip rejeciton in
+        ``(sigma_lower, sigma_upper)``. Defaults to ``(3, 3)``, which
+        means 3-sigma clipping from the "sigma" values determined by the
+        method specified by ``reject``.
+
+    maxiters : int, optional.
+        The maximum number of iterations to do the rejection (for
+        sigma-clipping). It is silently converted to ``int`` if it is
+        not.
+
+    ddof : int, optional.
+        The delta-degrees of freedom (see `~numpy.std`). It is silently
+        converted to ``int`` if it is not.
+
+    nkeep : float or int, optional.
+        The minimum number of pixels that should be left after
+        rejection. If ``nkeep < 1``, it is regarded as fraction of the
+        total number of pixels along the axis to combine. This
+        corresponds to _positive_ ``nkeep`` parameter of IRAF IMCOMBINE.
+        If number of remaining non-nan value is fewer than ``nkeep``,
+        the masks at that position will be reverted to the previous
+        iteration, and rejection code will be added by number 4.
+
+    maxrej : float or int, optional.
+        The maximum number of pixels that can be rejected during the
+        rejection. If ``maxrej < 1``, it is regarded as fraction of the
+        total number of pixels along the axis to combine. This
+        corresponds to _negative_ ``nkeep`` parameter of IRAF IMCOMBINE.
+        In IRAF, only one of ``nkeep`` and ``maxrej`` can be set.
+        If number of rejected pixels at a position exceeds ``maxrej``,
+        the masks at that position will be reverted to the previous
+        iteration, and rejection code will be added by number 8.
+
+    cenfunc : str, optional.
+        The centering function to be used in rejection algorithm.
+
+          * median if  ``cenfunc in ['med', 'medi', 'median']``
+          * average if ``cenfunc in ['avg', 'average', 'mean']``
+          * lower median if ``cenfunc in ['lmed', 'lmd', 'lmedian']``
+
+        The lower median means the median which takes the lower value
+        when even number of data is left. This is suggested to be robust
+        against cosmic-ray hit according to IRAF IMCOMBINE manual.
+
+    n_minmax : 2-float or 2-int list-like, optional.
+        The number of low and high pixels to be rejected by the "minmax"
+        algorithm. These numbers are converted to fractions of the total
+        number of input images so that if no rejections have taken place
+        the specified number of pixels are rejected while if pixels have
+        been rejected by masking, thresholding, or non-overlap, then the
+        fraction of the remaining pixels, truncated to an integer, is
+        used.
+
+    rdnoise, gain, snoise : float, optional.
+        The readnoise of the detector in the unit of electrons, electron
+        gain of the detector in the unit of elctrons/DN (or
+        electrons/ADU), and sensitivity noise as a fraction. Used only
+        if ``reject="ccdclip"`` and/or ``combine="nmodel"``.
+
+        The variance of a single pixel in an image when these are used,
+
+        .. math::
+            V_\mathrm{DN}
+            = ( \mathtt{rdnoise}/\mathtt{gain} )^2
+            + \mathrm{DN}/\mathtt{gain}
+            + ( \mathtt{snoise} * \mathrm{DN} )^2
+
+        .. math::
+            V_\mathrm{electron}
+            = (\mathtt{rdnoise})^2
+            + (\mathtt{gain} * \mathrm{DN})^2
+            + (\mathtt{snoise} * \mathtt{gain} * \mathrm{DN})^2
+
+    pclip : float, optional.
+        The parameter for ``reject="pclip"``. If ``abs(pclip) >= 1``,
+        then it specifies a number of pixels above or below the median
+        to use for computing the clipping sigma. If ``abs(pclip) < 1``,
+        then it specifies the fraction of the pixels above or below the
+        median to use. A positive value selects a point above the median
+        and a negative value selects a point below the median. The
+        default of ``-0.5`` selects approximately the quartile point.
+        Better to use negative value to avoid cosmic-ray contamination.
+
     '''
+    if copy:
+        arr = arr.copy()
+
     if np.array(arr).ndim == 1:
         raise ValueError("1-D array combination is not supported!")
 
@@ -479,22 +858,22 @@ def ndcombine(
     if weight is None:
         weight = np.ones(arr.shape[0])
 
-    calc_s, scales, fun_s = _set_calc_szw(arr, scale, scale_kw)
-    calc_z, zeros, fun_z = _set_calc_szw(arr, zero, zero_kw)
-    calc_w, weights, fun_w = _set_calc_szw(arr, weight)
+    calc_z, zeros, fun_z = _set_calc_zsw(arr, zero, zero_kw)
+    calc_s, scales, fun_s = _set_calc_zsw(arr, scale, scale_kw)
+    calc_w, weights, fun_w = _set_calc_zsw(arr, weight)
 
-    if calc_s:
-        for i in range(arr.shape[0]):
-            scales.append(fun_s(arr[i, ]))
-        scales = np.array(scales)
-        scales /= scales[0]  # So that normalize 1.000 for the 0-th image.
     if calc_z:
-        if fun_z == fun_s:
-            zeros = scales.copy()
+        for i in range(arr.shape[0]):
+            zeros.append(fun_z(arr[i, ]))
+        zeros = np.array(zeros)
+    if calc_s:
+        if fun_s == fun_z:
+            scales = zeros.copy()
         else:
             for i in range(arr.shape[0]):
-                zeros.append(fun_z(arr[i, ]))
-            zeros = np.array(zeros)
+                scales.append(fun_s(arr[i, ]))
+            scales = np.array(scales)
+        scales /= scales[0]  # So that normalize 1.000 for the 0-th image.
     if calc_w:  # TODO: Needs update to match IRAF's...
         if fun_w == fun_s:
             weights = scales.copy()

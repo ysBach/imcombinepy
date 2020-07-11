@@ -8,7 +8,7 @@ __all__ = [
     'write2fits', 'update_hdr',
     '_get_combine_shape', '_set_int_dtype',
     '_set_mask', '_set_sigma', '_set_keeprej', '_set_cenfunc', '_set_combfunc',
-    '_set_reject', '_set_calc_szw',
+    '_set_reject', '_set_calc_zsw',
     "slice_from_string"
 ]
 
@@ -47,9 +47,12 @@ def update_hdr(header, ncombine, imcmb_key, imcmb_val):
 
 
 def _calculate_step_sizes(x_size, y_size, num_chunks):
-    """
-    Calculate the strides in x and y to achieve at least
-    the ``num_chunks`` pieces.
+    """ Calculate the strides in x and y.
+    Notes
+    -----
+    Calculate the strides in x and y to achieve at least the
+    ``num_chunks`` pieces.
+
     Direct copy from ccdproc:
     https://github.com/astropy/ccdproc/blob/b9ec64dfb59aac1d9ca500ad172c4eb31ec305f8/ccdproc/combiner.py#L500
     """
@@ -191,10 +194,10 @@ def _set_reject(reject):
 
 
 # TODO: add sigma-clipped mean, med, std as scale, zero, or weight.
-def _set_calc_szw(arr, scale_zero_weight, szw_kw={}):
+def _set_calc_zsw(arr, scale_zero_weight, szw_kw={}):
     if isinstance(scale_zero_weight, str):
         szwstr = scale_zero_weight.lower()
-        calc_szw = True
+        calc_zsw = True
         szw = []
         if szwstr in ['avg', 'average', 'mean']:
             calcfun = bn.nanmean
@@ -215,15 +218,18 @@ def _set_calc_szw(arr, scale_zero_weight, szw_kw={}):
                 "If scale/zero/weight are array-like, they must be of size "
                 + "identical to arr.shape[0] (number of images to combine)."
             )
-        calc_szw = False
+        calc_zsw = False
         szw = np.array(scale_zero_weight)
         calcfun = None
-    return calc_szw, szw, calcfun
+    return calc_zsw, szw, calcfun
 
 
 def slice_from_string(string, fits_convention=False):
     """ Convert a string to a tuple of slices.
-    Direct copy from https://github.com/astropy/ccdproc/blob/b9ec64dfb59aac1d9ca500ad172c4eb31ec305f8/ccdproc/utils/slices.py#L1
+    Direct copy from `ccdproc`_
+
+    .. _ccdproc: https://github.com/astropy/ccdproc/blob/b9ec64dfb59aac1d9ca500ad172c4eb31ec305f8/ccdproc/utils/slices.py#L10
+
     Parameters
     ----------
     string : str
@@ -232,15 +238,18 @@ def slice_from_string(string, fits_convention=False):
         If True, assume the input string follows the FITS convention for
         indexing: the indexing is one-based (not zero-based) and the first
         axis is that which changes most rapidly as the index increases.
+
     Returns
     -------
     slice_tuple : tuple of slice objects
         A tuple able to be used to index a numpy.array
+
     Notes
     -----
     The ``string`` argument can be anything that would work as a valid way to
     slice an array in Numpy. It must be enclosed in matching brackets; all
     spaces are stripped from the string before processing.
+
     Examples
     --------
     >>> import numpy as np
@@ -334,9 +343,11 @@ def _defitsify_slice(slices):
 # astropy.stats.sigma_clipped_stats calcualtion.
 def sigmaclip_inf(a, sigma_lower=3., sigma_upper=3.,
                   cenfunc='median', ddof=1, outfunc='median'):
-    """ Infinite loop sigma-clip
-    copy from scipy:
-    https://github.com/scipy/scipy/blob/4c0fd79391e3b2ec2738bf85bb5dab366dcd12e4/scipy/stats/stats.py#L3159-L3225
+    """ Infinite loop sigma-clip.
+
+    copy from `scipy`_.
+
+    .. _scipy: https://github.com/scipy/scipy/blob/4c0fd79391e3b2ec2738bf85bb5dab366dcd12e4/scipy/stats/stats.py#L3159-L3225
     """
     # bn.median is ~ 2x fater than np.median
     cenfunc = _set_cenfunc(cenfunc, nameonly=False, nan=False)
