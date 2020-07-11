@@ -9,7 +9,7 @@ classifiers = ["Intended Audience :: Science/Research"]
 
 setup(
     name="imcombinepy",
-    version="0.1",
+    version="0.0.1",
     author="Yoonsoo P. Bach",
     author_email="dbstn95@gmail.com",
     description="",
