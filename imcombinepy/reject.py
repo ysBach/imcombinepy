@@ -29,25 +29,10 @@ def _sigclip(
     nit, ncombine, n_orig = _nvals
     low, upp, low_new, upp_new = lowupp
 
-    # if irafmode:
-    #     _arr = np.ma.array(data=_arr, mask=mask_orig | mask_pix)
-    #     sc = sigma_clip(_arr, simga_lower=sigma_lower,
-    #                     sigma_upper=sigma_upper, cenfunc=cenfunc,
-    #                     maxiters=maxiters)
-    #     n_reject = np.sum(sc.mask, axis=0)
-    #     n_remain = arr.shape[0] - n_reject
-    #     mask_nkeep = n_remain < nkeep
-    #     mask_maxrej = n_reject > maxrej
-    #     # pixels that has many non-NaN values, but too many pixels are
-    #     # rejected:
-    #     mask_restore = (~mask_pix) & (mask_nkeep | mask_maxrej)
-    #     _arr[mask_restore] = cenfunc()
-
-    #     for pix in ~mask_pix and (n_remain < nkeep or n_orig - n_remain > maxrej)
-
     nrej = ncombine - n_orig  # same as nrej_old at the moment
     n_old = 1*n_orig
     k = 0
+    # mask_pix is where **NO** rejection should occur.
     while k < maxiters:
         cen = cenfunc(_arr, axis=0)
         std = bn.nanstd(_arr, axis=0, ddof=ddof)
@@ -55,7 +40,7 @@ def _sigclip(
         upp_new[~mask_pix] = (cen + sigma_upper*std)[~mask_pix]
 
         # In numpy, > or < automatically applies along axis=0!!
-        mask_bound = (_arr < low_new) | (_arr > upp_new)
+        mask_bound = (_arr < low_new) | (_arr > upp_new) | np.isnan(_arr)
         _arr[mask_bound] = np.nan
 
         n_new = ncombine - np.sum(mask_bound, axis=0)
@@ -78,8 +63,10 @@ def _sigclip(
         # because, e.g., if nkeep is very large, excessive rejection may
         # happen for many times, and the restoration CANNOT be done
         # after all the iterations.
-        low_new[mask_pix] = low[mask_pix]
-        upp_new[mask_pix] = upp[mask_pix]
+        low_new[mask_pix] = low[mask_pix].copy()
+        upp_new[mask_pix] = upp[mask_pix].copy()
+        low = low_new
+        upp = upp_new
 
         if total_change == 0:
             break
