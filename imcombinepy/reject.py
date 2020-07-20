@@ -1,38 +1,11 @@
-import numpy as np
-from .util import _set_keeprej, _set_cenfunc, _set_mask, _set_sigma
 import bottleneck as bn
+from astropy.stats import sigma_clip
+import numpy as np
 
+from .util import (_set_cenfunc, _set_keeprej, _set_mask, _set_minmax,
+                   _set_sigma, _setup_reject)
 
 __all__ = ["sigclip_mask"]
-
-
-'''
-Among the 6 rejection algorithms in IRAF,
-```
-         none - No rejection
-      sigclip - Reject pixels using a sigma clipping algorithm
-       minmax - Reject the nlow and nhigh pixels
-        pclip - Reject pixels using sigma based on percentiles
-      ccdclip - Reject pixels using CCD noise parameters
-     crreject - Reject only positive pixels using CCD noise parameters
-    avsigclip - Reject pixels using an averaged sigma clipping algorithm
-```
-
-avsigclip and crreject are not implemented as
-
-    (1) ``avsigclip`` is ccdclip with readout noise is fixed 0.
-    (2) ``crreject`` is ccdclip with ``lsigma`` or ``sigma_lower=inf``.
-
-Parameter mappings (<IRAF>: <python>):
-    * nkeep: nkeep, maxrej [ALL]
-    * mclip: cenfunc (select median or mean) [ccdclip]
-    * lsigma, hsigma: sigma_lower, sigma_upper [sigclip, pclip, ccdclip]
-    * rdnoise, gain, snoise: rdnoise, gain, snoise [ccdclip]
-    * sigscale
-    * pclip
-    * grow
-
-'''
 
 
 # TODO: let ``cenfunc`` be function object...?
@@ -41,35 +14,39 @@ Parameter mappings (<IRAF>: <python>):
 # *************************************************************************** #
 def _sigclip(
         arr, mask=None, sigma_lower=3., sigma_upper=3., maxiters=5, ddof=0,
-        nkeep=3, maxrej=1-1.e-12, cenfunc='median'
+        nkeep=3, maxrej=1-1.e-12, cenfunc='median', satlevel=65535,
+        irafmode=False
 ):
     """ Do not provide arr.shape[0] > 65535...
     This is not what one would expect with this kind of simple code.
     """
-    mask = _set_mask(arr, mask)
-    _arr = arr.copy()
-    _arr[mask] = np.nan
-    numnan = np.sum(mask, axis=0)
-    nkeep, maxrej = _set_keeprej(_arr, nkeep, maxrej, axis=0)
-    cenfunc = _set_cenfunc(cenfunc, nameonly=False, nan=True)
+    # General setup
+    _arr, _masks, keeprej, cenfunc, _nvals, lowupp = _setup_reject(
+        arr=arr, mask=mask, nkeep=nkeep, maxrej=maxrej, cenfunc=cenfunc
+    )
+    mask_orig, mask_nkeep, mask_maxrej, mask_pix = _masks
+    nkeep, maxrej = keeprej
+    nit, ncombine, n_orig = _nvals
+    low, upp, low_new, upp_new = lowupp
 
-    # unsigned 8/16-bit (up to 255/65535) will be enough for num_iter
-    # and num_rej, respectively.
-    nit = np.ones(_arr.shape[1:], dtype=np.uint8)
-    n_orig = _arr.shape[0]
-    nrej_old = np.sum(mask, axis=0, dtype=np.uint16)
-    n_old = n_orig - nrej_old  # num of remaining pixels
+    # if irafmode:
+    #     _arr = np.ma.array(data=_arr, mask=mask_orig | mask_pix)
+    #     sc = sigma_clip(_arr, simga_lower=sigma_lower,
+    #                     sigma_upper=sigma_upper, cenfunc=cenfunc,
+    #                     maxiters=maxiters)
+    #     n_reject = np.sum(sc.mask, axis=0)
+    #     n_remain = arr.shape[0] - n_reject
+    #     mask_nkeep = n_remain < nkeep
+    #     mask_maxrej = n_reject > maxrej
+    #     # pixels that has many non-NaN values, but too many pixels are
+    #     # rejected:
+    #     mask_restore = (~mask_pix) & (mask_nkeep | mask_maxrej)
+    #     _arr[mask_restore] = cenfunc()
 
-    # Initiate
-    low = bn.nanmin(_arr, axis=0)
-    upp = bn.nanmax(_arr, axis=0)
-    low_new = low.copy()
-    upp_new = upp.copy()
+    #     for pix in ~mask_pix and (n_remain < nkeep or n_orig - n_remain > maxrej)
 
-    nrej = n_orig - n_old  # same as nrej_old at the moment
-    mask_nkeep = ((n_orig - numnan) < nkeep)
-    mask_maxrej = (nrej_old > maxrej)
-    mask_pix = mask_nkeep | mask_maxrej
+    nrej = ncombine - n_orig  # same as nrej_old at the moment
+    n_old = 1*n_orig
     k = 0
     while k < maxiters:
         cen = cenfunc(_arr, axis=0)
@@ -81,11 +58,12 @@ def _sigclip(
         mask_bound = (_arr < low_new) | (_arr > upp_new)
         _arr[mask_bound] = np.nan
 
-        n_new = n_orig - np.sum(mask_bound, axis=0)
+        n_new = ncombine - np.sum(mask_bound, axis=0)
         n_change = n_old - n_new
         total_change = np.sum(n_change)
+
         mask_nochange = (n_change == 0)  # identical to say "max-iter reached"
-        mask_nkeep = ((n_orig - nrej) < nkeep)
+        mask_nkeep = ((ncombine - nrej) < nkeep)
         mask_maxrej = (nrej > maxrej)
 
         # mask pixel position if any of these happened.
@@ -96,6 +74,10 @@ def _sigclip(
         # revert to the previous ones if masked.
         # By doing this, pixels which was mask_nkeep now, e.g., will
         # again be True in mask_nkeep in the next iter but unchanged.
+        # This should be done at every iteration (unfortunately)
+        # because, e.g., if nkeep is very large, excessive rejection may
+        # happen for many times, and the restoration CANNOT be done
+        # after all the iterations.
         low_new[mask_pix] = low[mask_pix]
         upp_new[mask_pix] = upp[mask_pix]
 
@@ -112,13 +94,27 @@ def _sigclip(
         k += 1
         n_old = n_new
 
-    mask |= (arr < low_new) | (arr > upp_new)
+    mask = mask_orig | (arr < low_new) | (arr > upp_new)
 
     code = np.zeros(_arr.shape[1:], dtype=np.uint8)
-    code += (2*mask_nochange + 4*mask_nkeep + 8*mask_maxrej).astype(np.uint8)
-
     if (maxiters == 0):
         code += 1
+    else:
+        code += (2*mask_nochange + 4*mask_nkeep
+                 + 8*mask_maxrej).astype(np.uint8)
+
+    if irafmode:
+        n_minimum = max(nkeep, ncombine - maxrej)
+        resid = np.abs(_arr - cen)
+        # need this cuz bn.argpartition cannot handle NaN:
+        resid[mask_orig] = satlevel  # very large value
+
+        ind = bn.argpartition(resid, kth=n_minimum, axis=0)
+        # need *nan*max because some positions can have many NaNs.
+        resid_cut = bn.nanmax(np.take_along_axis(resid, ind, axis=0), axis=0)
+        # Note that ``np.nan <= np.nan`` is ``False``, so NaN pixels are
+        # not affected by this:
+        mask[resid <= resid_cut] = False
 
     return (mask, low, upp, nit, code)
 
@@ -127,7 +123,7 @@ def _sigclip(
 def sigclip_mask(
     arr, mask=None, sigma=3., sigma_lower=None, sigma_upper=None, maxiters=5,
     ddof=0, nkeep=3, maxrej=None, cenfunc='median',
-    axis=0, full=True,
+    axis=0, full=True, satlevel=65535, irafmode=False
 ):
     ''' Only along axis=0.
 
@@ -140,12 +136,22 @@ def sigclip_mask(
         The initial mask provided prior to any rejection. ``arr`` and
         ``mask`` must have the identical shape.
     sigma : float-like, optional.
-        The sigma-factors to be used for sigma-clip rejeciton. See Note.
+        The sigma-factors to be used for sigma-clip rejeciton.
+        Overridden by ``sigma_lower`` and/or ``sigma_upper``, if input.
+        See Note.
+    sigma_lower : float or `None`, optional
+        The number of standard deviations to use as the lower bound for
+        the clipping limit.  If `None` then the value of ``sigma`` is
+        used.  The default is `None`.
+    sigma_upper : float or `None`, optional
+        The number of standard deviations to use as the upper bound for
+        the clipping limit.  If `None` then the value of ``sigma`` is
+        used.  The default is `None`.
     maxiters : int, optional.
         The maximum number of iterations to do the sigma-clipping. It is
         silently converted to int if it is not.
     ddof : int, optional.
-        The delta-degrees of freedom (see `~numpy.std`). It is silently
+        The delta-degrees of freedom (see `numpy.std`). It is silently
         converted to int if it is not.
     nkeep : float or int, optional.
         The minimum number of pixels that should be left after
@@ -191,14 +197,15 @@ def sigclip_mask(
         ``(n-1)``-D array.
     o_code : ndarray of uint8
         Returned only if ``full = True``. Each element is a ``uint8``
-        value with
+        value with::
           *      (0): maxiters reached without any flag below
           * 1-th (1): maxiters == 0 (no iteration happened)
           * 2-th (2): iteration finished before maxiters reached
           * 3-th (4): remaining ndata < nkeep reached
           * 4-th (8): rejected ndata > maxrej reached
-        The code of 2 is, for example, 0010 in binary, so the 2-th
-        condition flagged.
+        The code of 10 is, for example, 1010 in binary, so the iteration
+        finished before ``maxiters`` (2-th flag) because pixels more
+        than ``maxrej`` are rejected (4-th flag).
 
     Notes
     -----
@@ -253,15 +260,38 @@ def sigclip_mask(
         nkeep=nkeep,
         maxrej=maxrej,
         cenfunc=cenfunc,
+        satlevel=satlevel,
+        irafmode=irafmode
     )
     if full:
         return o_mask, o_low, o_upp, o_nit, o_code
     else:
         return o_mask
 
+
 # *************************************************************************** #
 # *                             MINMAX CLIPPING                             * #
 # *************************************************************************** #
+def _minmax(
+        arr, mask=None, q_low=0, q_upp=0, cenfunc='median'
+):
+    # General setup (nkeep and maxrej as dummy)
+    _arr, _masks, _, cenfunc, _nvals, lowupp = _setup_reject(
+        arr=arr, mask_orig=mask, nkeep=None, maxrej=None, cenfunc=cenfunc
+    )
+    mask = _masks[0]  # nkeep and maxrej are not used in MINMAX.
+    nit, n_orig, n_old = _nvals
+    low, upp, low_new, upp_new = lowupp
+    nrej = n_orig - n_old  # same as nrej_old at the moment
+
+    n_rej_low = int(n_old * q_low + 0.001)  # adding 0.001 following IRAF
+    n_rej_upp = int(n_old * q_upp + 0.001)  # adding 0.001 following IRAF
+
+    while True:
+        arr[arr <= low] = np.nan
+        n_after_low = n_orig - np.isnan(arr, axis=0)
+
+        minval = bn.nanargmin(_arr, axis=0)
 
 
 # *************************************************************************** #

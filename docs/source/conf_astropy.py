@@ -66,7 +66,6 @@ check_sphinx_version("1.2.1")
 # astropy core.  However, we don't want to cyclically reference astropy in its
 # own build so we remove it here.
 # del intersphinx_mapping['astropy']
-del intersphinx_mapping['h5py']
 
 # add any custom intersphinx for astropy
 # intersphinx_mapping['pytest'] = ('https://pytest.readthedocs.io/en/stable/', None)
@@ -80,8 +79,7 @@ del intersphinx_mapping['h5py']
 # directories to ignore when looking for source files.
 exclude_patterns.append('_templates')
 exclude_patterns.append('_pkgtemplate.rst')
-# .inc.rst mean *include* files, don't have sphinx process them
-exclude_patterns.append('**/*.inc.rst')
+exclude_patterns.append('**/*.inc.rst')  # .inc.rst mean *include* files, don't have sphinx process them
 
 # Add any paths that contain templates here, relative to this directory.
 if 'templates_path' not in locals():  # in case parent conf.py defines it
@@ -106,7 +104,7 @@ templates_path.append('_templates')
 
 project = u'imcombinepy'
 author = u'Yoonsoo P. Bach'
-copyright = u'2020-{0}, '.format(datetime.utcnow().year) + author
+copyright = u'2020–{0}, '.format(datetime.utcnow().year) + author
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -116,12 +114,6 @@ copyright = u'2020-{0}, '.format(datetime.utcnow().year) + author
 release = get_distribution(project).version
 # The short X.Y version.
 version = '.'.join(release.split('.')[:2])
-
-extensions += [
-    'sphinx.ext.napoleon',
-    'sphinx.ext.coverage',
-    'sphinx_rtd_theme',
-]
 
 # -- Options for the module index ---------------------------------------------
 
@@ -139,7 +131,7 @@ modindex_common_prefix = ['imcombinepy.']
 # override the theme defaults (The following options *are* the
 # defaults, so we do not actually need to set them here.)
 
-# html_theme_options = {
+#html_theme_options = {
 #    'logotext1': 'astro',  # white,  semi-bold
 #    'logotext2': 'py',     # orange, light
 #    'logotext3': ':docs'   # white,  light
@@ -157,7 +149,7 @@ modindex_common_prefix = ['imcombinepy.']
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes. To override the custom theme, set this to the
 # name of a builtin theme or the name of a custom theme in html_theme_path.
-# html_theme = "sphinx_rtd_theme"
+#html_theme = None
 
 # Custom sidebar templates, maps document names to template names.
 #html_sidebars = {}
@@ -165,8 +157,7 @@ modindex_common_prefix = ['imcombinepy.']
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
 # pixels large.
-# html_favicon = os.path.join(html_theme_path[0], html_theme, 'static', 'astropy_logo.ico')
-html_favicon = ''
+#html_favicon = ''
 
 # If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
 # using the given strftime format.

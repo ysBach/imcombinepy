@@ -36,6 +36,7 @@ import warnings
 import functools
 
 __all__ = [
+    'lmedian', 'nanlmedian',
     'median', 'nanmedian', 'ma_median'
 ]
 
@@ -43,7 +44,24 @@ array_function_dispatch = functools.partial(
     np.core.overrides.array_function_dispatch, module='numpy')
 
 
-@array_function_dispatch(np.lib.function_base._median_dispatcher)
+def lmedian(a, axis=None, out=None, overwrite_input=False, keepdims=False):
+    return median(a, axis=axis, out=out, overwrite_input=overwrite_input,
+                  keepdims=keepdims, choose='lower')
+
+
+def nanlmedian(a, axis=None, out=None, overwrite_input=False,
+               keepdims=np._NoValue):
+    return nanmedian(a, axis=axis, out=out, overwrite_input=overwrite_input,
+                     keepdims=keepdims, choose='lower')
+
+
+def _median_dispatcher(
+        a, axis=None, out=None, overwrite_input=None, keepdims=None,
+        choose=None):
+    return (a, out)
+
+
+@array_function_dispatch(_median_dispatcher)
 def median(
         a, axis=None, out=None, overwrite_input=False, keepdims=False,
         choose='mean'
