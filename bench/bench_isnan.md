@@ -1,4 +1,10 @@
+# Benchmark related to ``isnan``
+
+
+## Usage with ``median``
+
 From the benchmark below, I find
+
 1. The ``nanXXX`` function is of course slower than ``XXX`` function.
 1. The ``median`` and ``nanmedian`` of bottleneck has nearly no speed difference (!)
 1. Testing the existence of at least one NaN has a little bit of overhead.
@@ -88,3 +94,31 @@ Therefore, the conclusion is
 * Answer: For our case, **NO**. If ``bn.nanmean`` takes time ``t_bn``, ``np.mean`` takes time ``t_np``, and ``np.any(np.isnan(data))`` takes ``t_nan``, roughly ``t_bn ~ t_np + t_nan``, so there's only little gain (sometimes even slower).
 
 Therefore, I did not use, e.g., ``np.mean``, but always used ``bn.nanmean``.
+
+
+## Usage with ``count_nonzero``
+To calculate the number of pixels that are not being masked along a certain axis, we need to use ``np.sum(mask, axis=0)`` or ``np.count_nonzero(mask, axis=0)``. The latter is a bit faster (depending on the situations from x1.0 to x2?).
+
+```python
+import numpy as np
+
+np.random.seed(12345)
+data3d = np.random.normal(size=(20, 1000, 200))
+mask3d = np.zeros_like(data3d).astype(bool)
+data3d_nan = data3d.copy()
+mask3d_nan = mask3d.copy()
+mask3d_nan[3, 10:20, 10:25] = True
+mask3d_nan[4, 89:99, 60:70] = True
+data3d_nan[mask3d_nan] = np.nan
+
+%timeit np.count_nonzero(np.isnan(data3d_nan))
+%timeit np.sum(np.isnan(data3d_nan))
+
+%timeit np.count_nonzero(np.isnan(data3d_nan), axis=0)
+%timeit np.sum(np.isnan(data3d_nan), axis=0)
+
+# 2.47 ms +/- 133 µs per loop (mean +/- std. dev. of 7 runs, 100 loops each)
+# 4.99 ms +/- 210 µs per loop (mean +/- std. dev. of 7 runs, 100 loops each)
+# 5.54 ms +/- 81.5 µs per loop (mean +/- std. dev. of 7 runs, 100 loops each)
+# 5.67 ms +/- 172 µs per loop (mean +/- std. dev. of 7 runs, 100 loops each)
+```

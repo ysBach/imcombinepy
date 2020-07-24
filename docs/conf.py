@@ -26,12 +26,12 @@
 # See sphinx_astropy.conf for which values are set there.
 
 from datetime import datetime
-import os
+# import os
 import sys
 
 from pkg_resources import get_distribution
 
-import astropy
+# import astropy
 
 try:
     from sphinx_astropy.conf.v1 import *  # noqa
@@ -122,7 +122,7 @@ extensions += [
     'sphinx.ext.coverage',
     'sphinx_rtd_theme',
 ]
-
+autoapi_dirs = ['../']
 # -- Options for the module index ---------------------------------------------
 
 modindex_common_prefix = ['imcombinepy.']
@@ -139,11 +139,11 @@ modindex_common_prefix = ['imcombinepy.']
 # override the theme defaults (The following options *are* the
 # defaults, so we do not actually need to set them here.)
 
-# html_theme_options = {
-#    'logotext1': 'astro',  # white,  semi-bold
-#    'logotext2': 'py',     # orange, light
-#    'logotext3': ':docs'   # white,  light
-#    }
+html_theme_options = {
+    'logotext1': 'imcombine',  # white,  semi-bold
+    'logotext2': 'py',     # orange, light
+    'logotext3': ':docs'   # white,  light
+}
 
 # A different theme can be used, or other parts of this theme can be
 # modified, by overriding some of the variables set in the global
@@ -152,7 +152,7 @@ modindex_common_prefix = ['imcombinepy.']
 
 # Add any paths that contain custom themes here, relative to this directory.
 # To use a different custom theme, add the directory containing the theme.
-#html_theme_path = []
+# html_theme_path = []
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes. To override the custom theme, set this to the
@@ -160,13 +160,12 @@ modindex_common_prefix = ['imcombinepy.']
 # html_theme = "sphinx_rtd_theme"
 
 # Custom sidebar templates, maps document names to template names.
-#html_sidebars = {}
+# html_sidebars = {}
 
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
 # pixels large.
-# html_favicon = os.path.join(html_theme_path[0], html_theme, 'static', 'astropy_logo.ico')
-html_favicon = ''
+# html_favicon = ''
 
 # If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
 # using the given strftime format.
@@ -208,15 +207,18 @@ man_pages = [('index', project.lower(), project + u' Documentation',
 # Enable nitpicky mode - which ensures that all references in the docs
 # resolve.
 
-# nitpicky = True
-# nitpick_ignore = []
+nitpicky = True
+nitpick_ignore = []
 
-# for line in open('nitpick-exceptions'):
-#     if line.strip() == "" or line.startswith("#"):
-#         continue
-#     dtype, target = line.split(None, 1)
-#     target = target.strip()
-#     nitpick_ignore.append((dtype, target))
+try:
+    for line in open('nitpick-exceptions'):
+        if line.strip() == "" or line.startswith("#"):
+            continue
+        dtype, target = line.split(None, 1)
+        target = target.strip()
+        nitpick_ignore.append((dtype, target))
+except FileNotFoundError:
+    pass
 
 # -- Options for the Sphinx gallery -------------------------------------------
 

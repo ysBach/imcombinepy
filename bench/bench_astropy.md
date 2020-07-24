@@ -1,3 +1,6 @@
+# Benchmark comparison with astropy sigma-clip
+
+
 ```python
 import numpy as np
 import bottleneck as bn

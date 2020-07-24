@@ -1,17 +1,20 @@
+import glob
+
 import bottleneck as bn
 import numpy as np
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats
 from astropy.time import Time
+
 from .numpy_util import lmedian, nanlmedian
 
 __all__ = [
-    'write2fits', 'update_hdr',
+    'filelist', 'write2fits', 'update_hdr',
     'do_zs', 'get_zsw',
-    '_get_combine_shape', '_set_int_dtype',
+    '_get_combine_shape', '_set_int_dtype', '_get_dtype_limits',
     '_setup_reject',
     '_set_mask', '_set_sigma', '_set_keeprej', '_set_minmax',
-    '_set_thresh_mask',
+    '_set_thresh_mask', '_set_gain_rdns',
     '_set_cenfunc', '_set_combfunc',
     '_set_reject_name', '_set_calc_zsw',
     "slice_from_string"
@@ -20,6 +23,14 @@ __all__ = [
 
 def _get_from_hdr(header, key):
     pass
+
+
+def filelist(fpattern, fpaths=None):
+    if fpaths is None:
+        fpaths = glob.glob(fpattern)
+    fpaths = list(fpaths)
+    fpaths.sort()
+    return fpaths
 
 
 def do_zs(arr, zeros, scales, copy=False):
@@ -40,7 +51,12 @@ def do_zs(arr, zeros, scales, copy=False):
     # Times:
     #   (np.random.normal(size=(1000,1000)) - 0)/1   21.6 ms +- 730 us
     #   np.random.normal(size=(1000,1000))           20.1 ms +- 197 us
-
+    # Also note that both of the below show nearly identical timing
+    # (https://stackoverflow.com/a/45895371/7199629)
+    #   (data3d_nan.T / scale).T
+    #   np.array([data3d_nan[i, ] / _s for i, _s in enumerate(scale)])
+    # 7.58 +/- 0.3 ms, 8.46 +/- 1.88 ms, respectively. Though the former
+    # is concise, latter is more explicit, so I used the latter.
     return arr
 
 
@@ -89,23 +105,60 @@ def get_zsw(arr, zero, scale, weight, zero_kw, scale_kw, zero_to_0th,
     return zeros, scales, weights
 
 
+# TODO: add sigma-clipped mean, med, std as scale, zero, or weight.
+def _set_calc_zsw(arr, scale_zero_weight, zsw_kw={}):
+    if isinstance(scale_zero_weight, str):
+        zswstr = scale_zero_weight.lower()
+        calc_zsw = True
+        zsw = []
+        if zswstr in ['avg', 'average', 'mean']:
+            calcfun = bn.nanmean
+        elif zswstr in ['med', 'medi', 'median']:
+            calcfun = bn.nanmedian
+        elif zswstr in ['avg_sc', 'average_sc', 'mean_sc']:
+            _ = zsw_kw.pop('axis', None)  # if exist ``axis``, remove it.
+
+            def calcfun(x):
+                return sigma_clipped_stats(x, **zsw_kw)[0]
+        elif zswstr in ['med_sc', 'medi_sc', 'median_sc']:
+            _ = zsw_kw.pop('axis', None)  # if exist ``axis``, remove it.
+
+            def calcfun(x):
+                return sigma_clipped_stats(x, **zsw_kw)[1]
+    else:
+        zsw = np.array(scale_zero_weight)
+        if zsw.size == arr.shape[0]:
+            zsw = zsw.flatten()
+        else:
+            raise ValueError(
+                "If scale/zero/weight are array-like, they must be of size "
+                + "identical to arr.shape[0] (number of images to combine)."
+            )
+        calc_zsw = False
+        zsw = np.array(scale_zero_weight)
+        calcfun = None
+    return calc_zsw, zsw, calcfun
+
+
 def _setup_reject(arr, mask, nkeep, maxrej, cenfunc):
     ''' Does the common default setting for all rejection algorithms.
     '''
     _arr = arr.copy()
-    # NOTE: mask_orig is propagation of input mask && nonfinite(arr)
+    # NOTE: mask_nan is propagation of input mask && nonfinite(arr)
     _arr[_set_mask(_arr, mask)] = np.nan
-    mask_orig = ~np.isfinite(_arr)
-    numnan = np.sum(mask_orig, axis=0)
+    mask_nan = ~np.isfinite(_arr)
+
+    numnan = np.count_nonzero(mask_nan, axis=0)
     nkeep, maxrej = _set_keeprej(_arr, nkeep, maxrej, axis=0)
     cenfunc = _set_cenfunc(cenfunc, nameonly=False, nan=True)
 
-    # unsigned 8/16-bit (up to 255/65535) will be enough for num_iter
-    # and num_rej, respectively.
-    nit = np.ones(_arr.shape[1:], dtype=np.uint8)
     ncombine = _arr.shape[0]
-    nrej_old = np.sum(mask_orig, axis=0, dtype=np.uint16)
-    n_old = ncombine - nrej_old  # num of remaining pixels
+    int_dtype = _set_int_dtype(ncombine)
+    # n_iteration : in uint8
+    nit = np.ones(_arr.shape[1:], dtype=np.uint8)
+    # n_rejected/n_finite_old : all in int_dtype determined by _set_int_dtype
+    n_nan = np.count_nonzero(mask_nan, axis=0).astype(int_dtype)
+    n_finite_old = ncombine - n_nan  # num of remaining pixels
 
     # Initiate
     low = bn.nanmin(_arr, axis=0)
@@ -125,18 +178,18 @@ def _setup_reject(arr, mask, nkeep, maxrej, cenfunc):
         mask_pix = mask_nkeep.copy()
     elif not no_maxrej and no_nkeep:
         mask_nkeep = np.zeros(_arr.shape[1:], dtype=bool)
-        mask_maxrej = (nrej_old > maxrej)
+        mask_maxrej = (n_nan > maxrej)
         mask_pix = mask_maxrej.copy()
     else:
         mask_nkeep = ((ncombine - numnan) < nkeep)
-        mask_maxrej = (nrej_old > maxrej)
+        mask_maxrej = (n_nan > maxrej)
         mask_pix = mask_nkeep | mask_maxrej
 
     return (_arr,
-            [mask_orig, mask_nkeep, mask_maxrej, mask_pix],
+            [mask_nan, mask_nkeep, mask_maxrej, mask_pix],
             [nkeep, maxrej],
             cenfunc,
-            [nit, ncombine, n_old],
+            [nit, ncombine, n_finite_old],
             [low, upp, low_new, upp_new]
             )
 
@@ -170,7 +223,7 @@ def update_hdr(header, ncombine, imcmb_key, imcmb_val,
             "Offset method used for combine."
         )
         for i in range(min(999, len(imcmb_val))):
-            header[f"OFFST{i:03d}"] = str(offsets[i, ].tolist())
+            header[f"OFFST{i:03d}"] = str(offsets[i, ][::-1].tolist())
 
     # Add "IRAF-TLM" like header key for continuity with IRAF.
     header.set("FITS-TLM",
@@ -228,6 +281,16 @@ def _set_int_dtype(ncombine):
     return int_dtype
 
 
+def _get_dtype_limits(dtype):
+    try:
+        info = np.iinfo(dtype)
+    except ValueError:
+        # I don't use np.inf, because of a fear that some functions,
+        # e.g., bn.partition mayy not work for these, as well as np.nan.
+        info = np.finfo(dtype)
+    return (info.min, info.max)
+
+
 def _set_mask(arr, mask):
     if mask is None:
         mask = np.zeros_like(arr, dtype=bool)
@@ -260,12 +323,16 @@ def _set_sigma(sigma, sigma_lower=None, sigma_upper=None):
 
 
 def _set_keeprej(arr, nkeep, maxrej, axis):
-    if nkeep < 1:
+    if nkeep is None:
+        nkeep = 0
+    elif nkeep < 1:
         nkeep = int(np.around(nkeep*arr.shape[axis]))
+
     if maxrej is None:
         maxrej = int(arr.shape[axis])
     elif maxrej < 1:
         maxrej = int(np.around(maxrej*arr.shape[axis]))
+
     return nkeep, maxrej
 
 
@@ -314,6 +381,26 @@ def _set_thresh_mask(arr, mask, thresholds, update_mask=True):
         # no need to update _mask
 
     return mask_thresh
+
+
+def _set_gain_rdns(gain_or_rdnoise, ncombine, dtype='float32'):
+    extract = False
+    if isinstance(gain_or_rdnoise, str):
+        extract = True
+        arr = np.ones(ncombine, dtype=dtype)
+    else:
+        arr = np.array(gain_or_rdnoise).astype(dtype)
+        if arr.size == ncombine:
+            arr = arr.ravel()
+            if not np.all(np.isfinite(arr)):
+                raise ValueError("gain or rdnoise contains NaN")
+        elif arr.size == 1:
+            if not np.isfinite(arr):
+                raise ValueError("gain or rdnoise contains NaN")
+            arr = arr*np.ones(ncombine, dtype=dtype)
+        else:
+            raise ValueError("gain or rdnoise size not equal to ncombine.")
+    return extract, arr
 
 
 def _set_cenfunc(cenfunc, shorten=False, nameonly=True, nan=True):
@@ -381,41 +468,6 @@ def _set_reject_name(reject):
     elif rej in ['pclip', 'pc', 'percentile']:
         rej = 'pclip'
     return rej
-
-
-# TODO: add sigma-clipped mean, med, std as scale, zero, or weight.
-def _set_calc_zsw(arr, scale_zero_weight, zsw_kw={}):
-    if isinstance(scale_zero_weight, str):
-        zswstr = scale_zero_weight.lower()
-        calc_zsw = True
-        zsw = []
-        if zswstr in ['avg', 'average', 'mean']:
-            calcfun = bn.nanmean
-        elif zswstr in ['med', 'medi', 'median']:
-            calcfun = bn.nanmedian
-        elif zswstr in ['avg_sc', 'average_sc', 'mean_sc']:
-            _ = zsw_kw.pop('axis', None)  # if exist ``axis``, remove it.
-
-            def calcfun(x):
-                return sigma_clipped_stats(x, **zsw_kw)[0]
-        elif zswstr in ['med_sc', 'medi_sc', 'median_sc']:
-            _ = zsw_kw.pop('axis', None)  # if exist ``axis``, remove it.
-
-            def calcfun(x):
-                return sigma_clipped_stats(x, **zsw_kw)[1]
-    else:
-        zsw = np.array(scale_zero_weight)
-        if zsw.size == arr.shape[0]:
-            zsw = zsw.flatten()
-        else:
-            raise ValueError(
-                "If scale/zero/weight are array-like, they must be of size "
-                + "identical to arr.shape[0] (number of images to combine)."
-            )
-        calc_zsw = False
-        zsw = np.array(scale_zero_weight)
-        calcfun = None
-    return calc_zsw, zsw, calcfun
 
 
 def slice_from_string(string, fits_convention=False):

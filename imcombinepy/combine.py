@@ -1,16 +1,16 @@
-import glob
 from pathlib import Path
 
 import bottleneck as bn
 import numpy as np
 from astropy.io import fits
-from numpy.lib.arraysetops import isin
+from astropy.wcs import WCS
 
-from .reject import sigclip_mask
+from .reject import sigclip_mask, ccdclip_mask
 from .util import (_get_combine_shape, _set_cenfunc, _set_combfunc,
-                   _set_int_dtype, _set_keeprej, _set_mask, _set_reject_name,
-                   _set_sigma, _set_thresh_mask, do_zs, get_zsw, update_hdr,
-                   write2fits)
+                   _set_gain_rdns, _set_int_dtype, _set_keeprej, _set_mask,
+                   _set_reject_name, _set_sigma, _set_thresh_mask, do_zs,
+                   filelist, get_zsw, update_hdr, write2fits)
+from . import docstrings
 
 __all__ = ["fitscombine", "ndcombine"]
 
@@ -40,18 +40,6 @@ mclip                  : cenfunc
 lsigma    , hsigma     : sigma uple
 '''
 
-'''
-
-# TODO:
-add blank option
-add logfile
-add statsec with input, output, overlap
-add scale, zero, weight
-add scale_sample, zero_sample
-add mode for scale, zero, weight?
-add memlimit behaviour
-'''
-
 
 def fitscombine(
         fpaths=None, fpattern=None, mask=None, ext=0,
@@ -63,352 +51,36 @@ def fitscombine(
         zero_kw={'cenfunc': 'median', 'stdfunc': 'std', 'std_ddof': 1},
         scale_kw={'cenfunc': 'median', 'stdfunc': 'std', 'std_ddof': 1},
         zero_to_0th=True, scale_to_0th=True,
-        exposure_key="EXPTIME",
         scale_sample=None, zero_sample=None,
         reject=None,
         cenfunc='median',
-        sigma=[3., 3.], maxiters=1, ddof=1, nkeep=1, maxrej=None,
+        sigma=[3., 3.], maxiters=50, ddof=1, nkeep=1, maxrej=None,
         n_minmax=[1, 1],
         rdnoise=0., gain=1., snoise=0.,
         pclip=-0.5,
         logfile=None,
         combine='average',
         dtype='float32',
-        satlevel=65535, irafmode=False,
+        irafmode=True,
         memlimit=2.5e+9,
         verbose=False,
         full=False,
         imcmb_key='$I',
+        exposure_key="EXPTIME",
         output=None, output_mask=None, output_nrej=None,
         output_sigma=None, output_low=None, output_upp=None,
-        output_rejcode=None,
+        output_rejcode=None, return_dict=False,
         **kwargs
 ):
-    '''A helper function for ndcombine to cope with FITS files.
-
-    .. warning::
-        Few functionalities are not implemented yet:
-
-            #. ``blank`` option
-            #. ``logfile``
-            #. ``statsec`` with input, output, overlap
-            #. ``weight``
-            #. ``scale_sample``, ``zero_sample``
-            #. ``"mode"`` for ``scale``, ``zero``, ``weight``
-            #. ``memlimit`` behaviour
-
-    Parameters
-    ----------
-    fpaths : list-like of path-like, optional.
-        The list of file paths to be combined. These must be FITS files.
-        One and only one of ``fpaths`` or ``fpattern`` must be provided.
-
-    fpattern : str, optional.
-        The `~glob` pattern for files (e.g., ``"2020*[012].fits"``).
-        One and only one of ``fpaths`` or ``fpattern`` must be provided.
-
-    mask : ndarray, optional.
-        The mask of bad pixels. If given, it must satisfy
-        ``mask.shape[0]`` identical to the number of images.
-
-        .. note::
-            If the user ever want to use masking, it's more convenient
-            to use ``'MASK'`` extension to the FITS files or replace
-            bad pixel to very large or small numbers and use
-            ``thresholds``.
-
-    ext : int, optional.
-        The extension to be used in loading the FITS files.
-
-    offsets : str or (n, m)-d array
-        If array, it must have shape such that ``n`` is the number of
-        images and ``m`` is the dimension of the images (if ``m=3``,
-        offsets in x, y, z, ... order, not pythonic order), and it is
-        directly regarded as the **raw offsets**. If ``str``, the raw
-        offsets are obtained by the followings:
-          - ``CRPIX`` values in the header if ``"wcs"|"world"``
-          - ``LTV`` values in the header if ``"physical"|"phys"|"phy"``
-
-        .. note::
-            The physical coordinate system is defined by the IRAF-like
-            ``LTM``/``LTV`` keywords define the offsets. Currently,
-            only the cases when ``LTMi_j`` is 0 or 1 can be managed.
-            Otherwise, we need scaling and it is not supported now.
-
-        For both wcs or physical cases, the raw offsets for *each* frame
-        is nothing but an ``m``-D tuple consists of
-        ``offset_raw[i] = CRPIX{m-i}`` or ``LTV{m-i}[_{m-i}]``.
-        The reason to subtract ``i`` is because python has ``z, y, x``
-        order of indexing while WCS information is in ``x, y, z`` order.
-        If it is a ``j``-th image, ``offsets[j, :] = offset_raw``, and
-        ``offsets`` has shape of ``(n, m)``.
-
-        This raw ``offsets`` are then modified such that the minimum
-        offsets in each axis becomes zero (in pythonic way,
-        ``np.max(offsets, axis=0) - offsets``). The offsets are used
-        to determine the final output image's shape.
-
-        .. note::
-            Though IRAF imcombine says it calculates offsets from the
-            0-th image center if ``offsets="wcs"``, it seems it acutally
-            uses ``CRPIX`` from the header... I couldn't find how IRAF
-            does offset calculation for WCS, it's not reproducible using
-            rounding... Even using WCS info correctly, it's not
-            reproducible.
-            Very curious. But that mismatch is at most 2 pixels, and
-            mostly 0 pixel, so let me not bothered by it.
-
-    thresholds : 2-float list-like, optional.
-        The thresholds ``(lower, upper)`` applied to all images before
-        any rejection/combination. Default is no thresholding,
-        ``(-np.inf, +np.inf)``. One possible usage is to replace bad
-        pixel to very large or small numbers and use this thresholding.
-
-    zero : str or 1-d array
-        The *zero* value to subtract from each image *after*
-        thresholding, but *before* scaling/offset
-        shifting/rejection/combination. If an array, it is directly
-        subtracted from each image, (so it must
-        have size identical to the number of images). If ``str``, the
-        zero-level is:
-          - **Average** if ``'avg'|'average'|'mean'``
-          - **Median** if ``'med'|'medi'|'median'``
-          - **Sigma-clipped average** if
-            ``'avg_sc'|'average_sc'|'mean_sc'``
-          - **Sigma-clipped median** if
-            ``'med_sc'|'medi_sc'|'median_sc'``
-        For options for sigma-clipped statistics, see ``zero_kw``.
-
-        .. note::
-            By using ``zero="med_sc"``, the user can crudely subtract
-            sky value from each frame before combining.
-
-    scale : str or 1-d array
-        The way to scale each image *after* thresholding/zeroing, but
-        *before* offset shifting/rejection/combination. If an array, it
-        is directly understood as the **raw scales**, and it must have
-        size identical to the number of images. If ``str``, the raw
-        scale is:
-          - **Exposure time** (``exposure_key`` in header of each FITS)
-            if ``'exp'|'expos'|'exposure'|'exptime'``
-          - **Average** if ``'avg'|'average'|'mean'``
-          - **Median** if ``'med'|'medi'|'median'``
-          - **Sigma-clipped average** if
-            ``'avg_sc'|'average_sc'|'mean_sc'``
-          - **Sigma-clipped median** if
-            ``'med_sc'|'medi_sc'|'median_sc'``
-        The true scale is obtained by ``scales / scales[0]`` if
-        ``scale_to_0th`` is `True`, following IRAF's convention.
-        Otherwise, the absolute value from the raw scale will be used.
-        For options for sigma-clipped statistics, see ``scale_kw``.
-
-        .. note::
-            Using ``scale="avg_sc", scale_to_0th=False`` is useful for
-            flat combining.
-
-    zero_to_0th : bool, optional.
-        Whether to re-base the zero values such that all images have
-        identical zero values as that of the 0-th image (in python,
-        ``zero - zero[0]``). This is the behavior of IRAF, so
-        ``zero_to_0th`` is `True` by default.
-
-    scale_to_0th : bool, optional.
-        Whether to re-scale the scales such that ``scale[0]`` is unity.
-        This is the behavior of IRAF, so ``scale_to_0th`` is `True`
-        by default.
-
-    zero_kw, scale_kw : dict
-        Used only if ``scale`` or ``zero`` are sigma-clipped mean,
-        median, etc (ending with ``_sc`` such as ``median_sc``,
-        ``avg_sc``). The keyword arguments for
-        `astropy.stats.sigma_clipped_stats`. By default,
-        ``std_ddof=1`` (note that `~astropy.stats.sigma_clipped_stats`
-        has default ``std_ddof=0``.)
-
-        .. note::
-            If ``axis`` is specified, it will be ignored.
-
-    exposure_key : str, optional.
-        The header keyword which contains the information about the
-        exposure time of each FITS file. This is used only if scaling is
-        done for exposure time (see ``scale``).
-
-    sigma : 2-float list-like, optional.
-        The sigma-factors to be used for sigma-clip rejeciton in
-        ``(sigma_lower, sigma_upper)``. Defaults to ``(3, 3)``, which
-        means 3-sigma clipping from the "sigma" values determined by the
-        method specified by ``reject``. If a single float, it will be
-        used for both the lower and upper values.
-
-    maxiters : int, optional.
-        The maximum number of iterations to do the rejection (for
-        sigma-clipping). It is silently converted to ``int`` if it is
-        not.
-
-    ddof : int, optional.
-        The delta-degrees of freedom (see `numpy.std`). It is silently
-        converted to ``int`` if it is not.
-
-    nkeep : float or int, optional.
-        The minimum number of pixels that should be left after
-        rejection. If ``nkeep < 1``, it is regarded as fraction of the
-        total number of pixels along the axis to combine. This
-        corresponds to *positive* ``nkeep`` parameter of IRAF IMCOMBINE.
-        If number of remaining non-nan value is fewer than ``nkeep``,
-        the masks at that position will be reverted to the previous
-        iteration, and rejection code will be added by number 4.
-
-    maxrej : float or int, optional.
-        The maximum number of pixels that can be rejected during the
-        rejection. If ``maxrej < 1``, it is regarded as fraction of the
-        total number of pixels along the axis to combine. This
-        corresponds to *negative* ``nkeep`` parameter of IRAF IMCOMBINE.
-        In IRAF, only one of ``nkeep`` and ``maxrej`` can be set.
-        If number of rejected pixels at a position exceeds ``maxrej``,
-        the masks at that position will be reverted to the previous
-        iteration, and rejection code will be added by number 8.
-
-    cenfunc : str, optional.
-        The centering function to be used in rejection algorithm.
-
-          - median if  ``'med'|'medi'|'median'``
-          - average if ``'avg'|'average'|'mean'``
-          - lower median if ``'lmed'|'lmd'|'lmedian'``
-
-        For lower median, see note in ``combine``.
-
-    n_minmax : 2-float or 2-int list-like, optional.
-        The number of low and high pixels to be rejected by the "minmax"
-        algorithm. These numbers are converted to fractions of the total
-        number of input images so that if no rejections have taken place
-        the specified number of pixels are rejected while if pixels have
-        been rejected by masking, thresholding, or non-overlap, then the
-        fraction of the remaining pixels, truncated to an integer, is
-        used.
-
-    rdnoise, gain, snoise : float, optional.
-        The readnoise of the detector in the unit of electrons, electron
-        gain of the detector in the unit of elctrons/DN (or
-        electrons/ADU), and sensitivity noise as a fraction. Used only
-        if ``reject="ccdclip"`` and/or ``combine="nmodel"``.
-
-        The variance of a single pixel in an image when these are used,
-
-        .. math::
-            V_\mathrm{DN}
-            = ( \mathtt{rdnoise}/\mathtt{gain} )^2
-            + \mathrm{DN}/\mathtt{gain}
-            + ( \mathtt{snoise} * \mathrm{DN} )^2
-
-        .. math::
-            V_\mathrm{electron}
-            = (\mathtt{rdnoise})^2
-            + (\mathtt{gain} * \mathrm{DN})^2
-            + (\mathtt{snoise} * \mathtt{gain} * \mathrm{DN})^2
-
-    pclip : float, optional.
-        The parameter for ``reject="pclip"``. If ``abs(pclip) >= 1``,
-        then it specifies a number of pixels above or below the median
-        to use for computing the clipping sigma. If ``abs(pclip) < 1``,
-        then it specifies the fraction of the pixels above or below the
-        median to use. A positive value selects a point above the median
-        and a negative value selects a point below the median. The
-        default of ``-0.5`` selects approximately the quartile point.
-        Better to use negative value to avoid cosmic-ray contamination.
-
-    combine: str, optional.
-        The function to be used for the final combining after
-        thresholding, zeroing, scaling, rejection, and offset shifting.
-
-          - median if  ``'med'|'medi'|'median'``
-          - average if ``'avg'|'average'|'mean'``
-          - lower median if ``'lmed'|'lmd'|'lmedian'``
-
-        .. note::
-            The lower median means the median which takes the lower value
-            when even number of data is left. This is suggested to be robust
-            against cosmic-ray hit according to IRAF IMCOMBINE manual.
-            Currently there is no lmedian-alternative in bottleneck or
-            numpy, so a custom-made version is used (in `numpy_util.py`),
-            which is nothing but a simple modification to the original
-            numpy source codes, and this is much slower than
-            bottleneck's median. I think it must be re-implemented in
-            the future.
-
-    imcmb_key : str
-        The thing to add as ``IMCMBnnn`` in the output FITS file header.
-        If ``"$I"``, following the default of IRAF, the file's name will
-        be added. Otherwise, it should be a header keyword. If the key
-        does not exist in ``nnn``-th file, a null string will be added.
-        If a null string (``imcmb_key=""``), it does not set the
-        ``IMCMBnnn`` keywords nor deletes any existing keyword.
-
-        .. warning::
-            If more than 999 files are combined, only the first 999
-            files will be recorded in the header.
-
-    output : path-like, optional
-        The path to the final combined FITS file. It has dtype of
-        ``dtype`` and dimension identical to each input image.
-        Optional keyword arguments for ``fits.writeto()`` can be
-        provided as ``**kwargs``.
-
-    output_xxx : path-like, optional
-        The output path to the mask, number of rejected pixels at each
-        position, final ``nanstd(ddof=ddof)`` result,
-        lower and upper bounds for rejection, and the integer codes for
-        the rejection algorithm (see ``mask_total``, ``mask_rej``,
-        ``sigma``, ``low``, ``upp``, and ``rejcode`` in Returns.)
-
-    Returns
-    -------
-    comb : `astropy.io.fits.PrimaryHDU`
-        The combined FITS file.
-
-    sigma : ndarray
-        The sigma map
-
-    mask_total : ndarray (dtype bool)
-        The full mask, ``N+1``-D. Identical to original FITS files'
-        masks propagated with ``| mask_rej | mask_thresh`` below. The
-        total number of rejected pixels at each position can be obtained
-        by ``np.sum(mask_total, axis=0)``.
-
-    mask_rej, mask_thresh : ndarray(dtype bool)
-        The masks (``N``-D) from the rejection process and thresholding
-        process (``thresholds``). Threshold is done prior to any
-        rejection or scaling/zeroing. Number of rejected pixels at each
-        position for each process can be obtained by, e.g.,
-        ``nrej = np.sum(mask_rej, axis=0)``. Note that ``mask_rej``
-        consumes less memory than ``nrej``.
-
-    low, upp : ndarray (dtype ``dtype``)
-        The lower and upper bounds (``N``-D) to reject pixel values at
-        each position (``(data < low) | (upp < data)`` are removed).
-
-    nit : ndarray (dtype uint8)
-        The number of iterations (``N``-D) used in rejection process. I
-        cannot think of iterations larger than 100, so set the dtype to
-        ``uint8`` to reduce memory and filesize.
-
-    rejcode : ndarray (dtype uint8)
-        The exit code from rejection (``N``-D). See each rejection's
-        docstring.
-    '''
     if verbose:
         print("Organizing", end='... ')
-    given_fpaths = fpaths is not None
-    given_fpattern = fpattern is not None
 
-    if given_fpaths + given_fpattern != 1:
+    if (fpaths is not None) + (fpattern is not None) != 1:
         raise ValueError("Give one and only one of fpaths/fpattern.")
 
-    if given_fpattern:
-        fpaths = list(glob.glob(fpattern))
-        fpaths.sort()
-
-    fpaths = list(fpaths)  # convert to list just in case...
+    fpaths = filelist(fpattern, fpaths=fpaths)
     ncombine = len(fpaths)
+    reject = _set_reject_name(reject)
     int_dtype = _set_int_dtype(ncombine)
 
     # == check if we should care about memory =============================== #
@@ -434,7 +106,16 @@ def fitscombine(
     if isinstance(scale, str):
         if scale.lower() in ["exp", "expos", "exposure", "exptime"]:
             extract_exptime = True
-            scale = []
+            scale = np.ones(ncombine, dtype=dtype)
+
+    if reject == 'ccdclip':
+        extract_gain, gns = _set_gain_rdns(gain, ncombine, dtype=dtype)
+        extract_rdnoise, rds = _set_gain_rdns(rdnoise, ncombine, dtype=dtype)
+        extract_snoise, sns = _set_gain_rdns(snoise, ncombine, dtype=dtype)
+    else:
+        extract_gain, gns = False, 1
+        extract_rdnoise, rds = False, 0
+        extract_snoise, sns = False, 0
 
     # == organize offsets =================================================== #
     # TODO: if offsets is None and ``fsize_tot`` << memlimit, why not
@@ -443,8 +124,8 @@ def fitscombine(
     use_wcs, use_phy = False, False
     if isinstance(offsets, str):
         if offsets.lower() in ['world', 'wcs']:
-            # w_ref = WCS(hdr0)
-            # cen_ref = np.array([hdr0[f'NAXIS{i+1}']/2 for i in range(ndim)])
+            w_ref = WCS(hdr0)
+            cen_ref = np.array([hdr0[f'NAXIS{i+1}']/2 for i in range(ndim)])
             use_wcs = True
             offset_mode = "WCS"
             offsets = np.zeros((ncombine, ndim))
@@ -478,7 +159,16 @@ def fitscombine(
                     imcmb_val.append('')
 
         if extract_exptime:
-            scale.append(float(hdr[exposure_key]))
+            scale[i] = float(hdr[exposure_key])
+
+        if extract_gain:
+            gns[i] = float(hdr[gain])  # gain is given as header key
+
+        if extract_rdnoise:
+            rds[i] = float(hdr[rdnoise])  # rdnoise is given as header key
+
+        if extract_snoise:
+            sns[i] = float(hdr[snoise])  # snoise is given as header key
 
         if hdr['NAXIS'] != ndim:
             raise ValueError(
@@ -488,18 +178,16 @@ def fitscombine(
 
         # Update offsets if WCS or Physical should be used
         if use_wcs:
-            # NOTE: the indexing in python is [z, y, x] order!!
-            offsets[i, ] = [hdr[f'CRPIX{i}'] for i in range(ndim, 0, -1)]
-            '''
             # Code if using WCS, which may be much slower (but accurate?)
             # Find the center's pixel position in w_ref, in nearest int
-            from astropy.wcs import WCS
             w = WCS(hdr)
             cen = [hdr[f'NAXIS{i+1}']/2 for i in range(ndim)]
             cen_coo = w.all_pix2world(*cen, 0)
             cen = np.around(w_ref.all_world2pix(*cen_coo, 0)).astype(int)
-            offsets[i, ] = cen_ref - cen
-            '''
+            # NOTE: the indexing in python is [z, y, x] order!!
+            offsets[i, ] = (cen_ref - cen)[::-1]
+            # For IRAF-like calculation, use
+            # offsets[i, ] = [hdr[f'CRPIX{i}'] for i in range(ndim, 0, -1)]
         elif use_phy:
             # NOTE: the indexing in python is [z, y, x] order!!
             offsets[i, ] = [hdr[f'LTV{i}'] for i in range(ndim, 0, -1)]
@@ -618,11 +306,10 @@ def fitscombine(
         sigma=sigma,
         maxiters=maxiters,
         ddof=ddof,
-        rdnoise=rdnoise,
-        gain=gain,
-        snoise=snoise,
+        rdnoise=rds,  # it is rds, not rdnoise, as it was updated above.
+        gain=gns,     # it is gns, not gain   , as it was updated above.
+        snoise=sns,   # it is sns, not snoise , as it was updated above.
         pclip=pclip,
-        satlevel=satlevel,
         irafmode=irafmode,
         full=True
     )
@@ -669,7 +356,7 @@ def fitscombine(
         write2fits(upp, hdr0, output_upp, return_hdu=False, **kwargs)
 
     if output_nrej is not None:  # Do this BEFORE output_mask!!
-        nrej = np.sum(mask_total, axis=0).astype(int_dtype)
+        nrej = np.count_nonzero(mask_total, axis=0).astype(int_dtype)
         write2fits(nrej, hdr0, output_nrej, return_hdu=False, **kwargs)
 
     if output_mask is not None:  # Do this AFTER output_nrej!!
@@ -685,10 +372,108 @@ def fitscombine(
 
     # == Return ============================================================= #
     if full:
-        return (comb, sigma, mask_total, mask_rej, mask_thresh,
-                low, upp, nit, rejcode)
+        if return_dict:
+            return dict(
+                comb=comb,
+                sigma=sigma,
+                mask_total=mask_total,
+                mask_rej=mask_rej,
+                mask_thresh=mask_thresh,
+                low=low,
+                upp=upp,
+                nit=nit,
+                rejcode=rejcode
+            )
+        else:
+            return (comb, sigma, mask_total, mask_rej, mask_thresh,
+                    low, upp, nit, rejcode)
     else:
         return comb
+
+
+fitscombine.__doc__ = '''A helper function for ndcombine to cope with FITS files.
+
+    {}
+
+    Parameters
+    ----------
+    fpaths : list-like of path-like, optional.
+        The list of file paths to be combined. These must be FITS files.
+        One and only one of ``fpaths`` or ``fpattern`` must be provided.
+
+    fpattern : str, optional.
+        The `~glob` pattern for files (e.g., ``"2020*[012].fits"``).
+        One and only one of ``fpaths`` or ``fpattern`` must be provided.
+
+    mask : ndarray, optional.
+        The mask of bad pixels. If given, it must satisfy
+        ``mask.shape[0]`` identical to the number of images.
+
+        .. note::
+            If the user ever want to use masking, it's more convenient
+            to use ``'MASK'`` extension to the FITS files or replace
+            bad pixel to very large or small numbers and use
+            ``thresholds``.
+
+    ext : int, optional.
+        The extension to be used in loading the FITS files.
+
+    {}
+
+    {}
+
+    imcmb_key : str
+        The thing to add as ``IMCMBnnn`` in the output FITS file header.
+        If ``"$I"``, following the default of IRAF, the file's name will
+        be added. Otherwise, it should be a header keyword. If the key
+        does not exist in ``nnn``-th file, a null string will be added.
+        If a null string (``imcmb_key=""``), it does not set the
+        ``IMCMBnnn`` keywords nor deletes any existing keyword.
+
+        .. warning::
+            If more than 999 files are combined, only the first 999
+            files will be recorded in the header.
+
+    exposure_key : str, optional.
+        The header keyword which contains the information about the
+        exposure time of each FITS file. This is used only if scaling is
+        done for exposure time (see ``scale``).
+
+    irafmode : bool, optional.
+        Whether to use IRAF-like pixel restoration scheme.
+
+    output : path-like, optional
+        The path to the final combined FITS file. It has dtype of
+        ``dtype`` and dimension identical to each input image.
+        Optional keyword arguments for ``fits.writeto()`` can be
+        provided as ``**kwargs``.
+
+    output_xxx : path-like, optional
+        The output path to the mask, number of rejected pixels at each
+        position, final ``nanstd(ddof=ddof)`` result,
+        lower and upper bounds for rejection, and the integer codes for
+        the rejection algorithm (see ``mask_total``, ``mask_rej``,
+        ``sigma``, ``low``, ``upp``, and ``rejcode`` in Returns.)
+
+    return_dict : bool, optional.
+        Whether to return the results as dict (works only if
+        ``full=True``).
+
+    Returns
+    -------
+    Returns the followings depending on ``full`` and ``return_dict``.
+
+    comb : `astropy.io.fits.PrimaryHDU` (dtype ``dtype``)
+        The combined FITS file.
+
+    {}
+
+    {}
+    '''.format(docstrings.NDCOMB_NOT_IMPLEMENTED(indent=4),
+               docstrings.OFFSETS_LONG(indent=4),
+               docstrings.NDCOMB_PARAMETERS_COMMON(indent=4),
+               docstrings.NDCOMB_RETURNS_COMMON(indent=4),
+               docstrings.IMCOMBINE_LINK(indent=4))
 
 
 # --------------------------------------------------------------------------- #
@@ -711,256 +496,10 @@ def ndcombine(
         combine='average',
         dtype='float32',
         memlimit=2.5e+9,
-        satlevel=65535, irafmode=False,
+        irafmode=True,
         verbose=False,
-        full=False
+        full=False,
 ):
-    ''' Combines the given arr assuming no additional offsets.
-
-    .. warning::
-        Few functionalities are not implemented yet:
-
-            #. ``blank`` option
-            #. ``logfile``
-            #. ``statsec`` with input, output, overlap
-            #. ``weight``
-            #. ``scale_sample``, ``zero_sample``
-            #. ``"mode"`` for ``scale``, ``zero``, ``weight``
-            #. ``memlimit`` behaviour
-
-    Parameters
-    ----------
-    arr : ndarray
-        The array to be combined along axis 0.
-
-    mask : ndarray, optional.
-        The mask of bad pixels. If given, it must satisfy
-        ``mask.shape[0]`` identical to the number of images.
-
-    copy : bool, optional.
-        Whether to copy the input array. Set to `True` if you want to
-        keep the original array unchanged. Even if it is `False`, the
-        code tries to keep ``arr`` unchanged unless, e.g.,
-        KeyboardInterrupt.
-
-    offsets : (n, m)-d array
-        If given, it must have shape such that ``n`` is the number of
-        images and ``m`` is the dimension of the images (offsets in x,
-        y, z, ... order, not pythonic order), and it is directly
-        regarded as the "raw offsets".
-
-        The raw offsets are then modified such that the minimum offsets
-        in each axis becomes zero (in pythonic way,
-        ``np.max(offsets, axis=0) - offsets``). The offsets are used
-        to determine the final output image's shape.
-
-    thresholds : 2-float list-like, optional.
-        The thresholds ``(lower, upper)`` applied to all images before
-        any rejection/combination. Default is no thresholding,
-        ``(-np.inf, +np.inf)``. One possible usage is to replace bad
-        pixel to very large or small numbers and use this thresholding.
-
-    zero : str or 1-d array
-        The "zero" value to subtract from each image *after*
-        thresholding, but *before* scaling/offset
-        shifting/rejection/combination. If an array, it is directly
-        subtracted from each image, (so it must
-        have size identical to the number of images). If ``str``, the
-        zero-level is:
-          - **Average** if ``'avg'|'average'|'mean'``
-          - **Median** if ``'med'|'medi'|'median'``
-          - **Sigma-clipped average** if
-            ``'avg_sc'|'average_sc'|'mean_sc'``
-          - **Sigma-clipped median** if
-            ``'med_sc'|'medi_sc'|'median_sc'``
-        For options for sigma-clipped statistics, see ``zero_kw``.
-
-        .. note::
-            By using ``zero="med_sc"``, the user can crudely subtract
-            sky value from each frame before combining.
-
-    scale : str or 1-d array
-        The way to scale each image *after* thresholding/zeroing, but
-        *before* offset shifting/rejection/combination. If an array, it
-        is directly understood as the **raw scales**, and it must have
-        size identical to the number of images. If ``str``, the raw
-        scale is:
-          - **Exposure time** (``exposure_key`` in header of each FITS)
-            if ``'exp'|'expos'|'exposure'|'exptime'``
-          - **Average** if ``'avg'|'average'|'mean'``
-          - **Median** if ``'med'|'medi'|'median'``
-          - **Sigma-clipped average** if
-            ``'avg_sc'|'average_sc'|'mean_sc'``
-          - **Sigma-clipped median** if
-            ``'med_sc'|'medi_sc'|'median_sc'``
-        The true scale is obtained by ``scales / scales[0]`` if
-        ``scale_to_0th`` is `True`, following IRAF's convention.
-        Otherwise, the absolute value from the raw scale will be used.
-        For options for sigma-clipped statistics, see ``scale_kw``.
-
-        .. note::
-            Using ``scale="avg_sc", scale_to_0th=False`` is useful for
-            flat combining.
-
-    zero_to_0th : bool, optional.
-        Whether to re-base the zero values such that all images have
-        identical zero values as that of the 0-th image (in python,
-        ``zero - zero[0]``). This is the behavior of IRAF, so
-        ``zero_to_0th`` is `True` by default.
-
-    scale_to_0th : bool, optional.
-        Whether to re-scale the scales such that ``scale[0]`` is unity.
-        This is the behavior of IRAF, so ``scale_to_0th`` is `True`
-        by default.
-
-    zero_kw, scale_kw : dict
-        Used only if ``scale`` or ``zero`` are sigma-clipped mean,
-        median, etc (ending with ``_sc`` such as ``median_sc``,
-        ``avg_sc``). The keyword arguments for astropy's
-        `astropy.stats.sigma_clipped_stats`. By default,
-        ``std_ddof=1``, which is different from that of original
-        ``sigma_clipped_stats``.
-
-        .. note::
-            If ``axis`` is specified, it will be ignored.
-
-    sigma : float, 2-float list-like, optional.
-        The sigma-factors to be used for sigma-clip rejeciton in
-        ``(sigma_lower, sigma_upper)``. Defaults to ``(3, 3)``, which
-        means 3-sigma clipping from the "sigma" values determined by the
-        method specified by ``reject``. If a single float, it will be
-        used for both the lower and upper values.
-
-    maxiters : int, optional.
-        The maximum number of iterations to do the rejection (for
-        sigma-clipping). It is silently converted to ``int`` if it is
-        not.
-
-    ddof : int, optional.
-        The delta-degrees of freedom (see `numpy.std`). It is silently
-        converted to ``int`` if it is not.
-
-    nkeep : float or int, optional.
-        The minimum number of pixels that should be left after
-        rejection. If ``nkeep < 1``, it is regarded as fraction of the
-        total number of pixels along the axis to combine. This
-        corresponds to *positive* ``nkeep`` parameter of IRAF IMCOMBINE.
-        If number of remaining non-nan value is fewer than ``nkeep``,
-        the masks at that position will be reverted to the previous
-        iteration, and rejection code will be added by number 4.
-
-    maxrej : float or int, optional.
-        The maximum number of pixels that can be rejected during the
-        rejection. If ``maxrej < 1``, it is regarded as fraction of the
-        total number of pixels along the axis to combine. This
-        corresponds to *negative* ``nkeep`` parameter of IRAF IMCOMBINE.
-        In IRAF, only one of ``nkeep`` and ``maxrej`` can be set.
-        If number of rejected pixels at a position exceeds ``maxrej``,
-        the masks at that position will be reverted to the previous
-        iteration, and rejection code will be added by number 8.
-
-    cenfunc : str, optional.
-        The centering function to be used in rejection algorithm.
-
-          * median if  ``'med'|'medi'|'median'``
-          * average if ``'avg'|'average'|'mean'``
-          * lower median if ``'lmed'|'lmd'|'lmedian'``
-
-        For lower median, see note in ``combine``.
-
-    n_minmax : 2-float or 2-int list-like, optional.
-        The number of low and high pixels to be rejected by the "minmax"
-        algorithm. These numbers are converted to fractions of the total
-        number of input images so that if no rejections have taken place
-        the specified number of pixels are rejected while if pixels have
-        been rejected by masking, thresholding, or non-overlap, then the
-        fraction of the remaining pixels, truncated to an integer, is
-        used.
-
-    rdnoise, gain, snoise : float, optional.
-        The readnoise of the detector in the unit of electrons, electron
-        gain of the detector in the unit of elctrons/DN (or
-        electrons/ADU), and sensitivity noise as a fraction. Used only
-        if ``reject="ccdclip"`` and/or ``combine="nmodel"``.
-
-        The variance of a single pixel in an image when these are used,
-
-        .. math::
-            V_\mathrm{DN}
-            = ( \mathtt{rdnoise}/\mathtt{gain} )^2
-            + \mathrm{DN}/\mathtt{gain}
-            + ( \mathtt{snoise} * \mathrm{DN} )^2
-
-        .. math::
-            V_\mathrm{electron}
-            = (\mathtt{rdnoise})^2
-            + (\mathtt{gain} * \mathrm{DN})^2
-            + (\mathtt{snoise} * \mathtt{gain} * \mathrm{DN})^2
-
-    pclip : float, optional.
-        The parameter for ``reject="pclip"``. If ``abs(pclip) >= 1``,
-        then it specifies a number of pixels above or below the median
-        to use for computing the clipping sigma. If ``abs(pclip) < 1``,
-        then it specifies the fraction of the pixels above or below the
-        median to use. A positive value selects a point above the median
-        and a negative value selects a point below the median. The
-        default of ``-0.5`` selects approximately the quartile point.
-        Better to use negative value to avoid cosmic-ray contamination.
-
-    combine: str, optional.
-        The function to be used for the final combining after
-        thresholding, zeroing, scaling, rejection, and offset shifting.
-
-          - median if  ``'med'|'medi'|'median'``
-          - average if ``'avg'|'average'|'mean'``
-          - lower median if ``'lmed'|'lmd'|'lmedian'``
-
-        .. note::
-            The lower median means the median which takes the lower value
-            when even number of data is left. This is suggested to be robust
-            against cosmic-ray hit according to IRAF IMCOMBINE manual.
-            Currently there is no lmedian-alternative in bottleneck or
-            numpy, so a custom-made version is used (in `numpy_util.py`),
-            which is nothing but a simple modification to the original
-            numpy source codes, and this is much slower than
-            bottleneck's median. I think it must be re-implemented in
-            the future.
-
-    Returns
-    -------
-    comb : `astropy.io.fits.PrimaryHDU`
-        The combined FITS file.
-
-    sigma : ndarray
-        The sigma map
-
-    mask_total : ndarray (dtype bool)
-        The full mask, ``N+1``-D. Identical to original FITS files'
-        masks propagated with ``| mask_rej | mask_thresh`` below. The
-        total number of rejected pixels at each position can be obtained
-        by ``np.sum(mask_total, axis=0)``.
-
-    mask_rej, mask_thresh : ndarray(dtype bool)
-        The masks (``N``-D) from the rejection process and thresholding
-        process (``thresholds``). Threshold is done prior to any
-        rejection or scaling/zeroing. Number of rejected pixels at each
-        position for each process can be obtained by, e.g.,
-        ``nrej = np.sum(mask_rej, axis=0)``. Note that ``mask_rej``
-        consumes less memory than ``nrej``.
-
-    low, upp : ndarray (dtype ``dtype``)
-        The lower and upper bounds (``N``-D) to reject pixel values at
-        each position (``(data < low) | (upp < data)`` are removed).
-
-    nit : ndarray (dtype uint8)
-        The number of iterations (``N``-D) used in rejection process. I
-        cannot think of iterations larger than 100, so set the dtype to
-        ``uint8`` to reduce memory and filesize.
-
-    rejcode : ndarray (dtype uint8)
-        The exit code from rejection (``N``-D). See each rejection's
-        docstring.
-    '''
     if copy:
         arr = arr.copy()
 
@@ -978,15 +517,10 @@ def ndcombine(
     ndim = arr.ndim
     ncombine = arr.shape[0]
 
-    if offsets is None:
-        offsets = np.zeros((ncombine, ndim))
-    else:
-        if offsets.shape[0] != ncombine:
-            raise ValueError("offset.shape[0] must be num(images)")
-
     combfunc = _set_combfunc(combine, nameonly=False, nan=True)
 
     # == 01 - Thresholding + Initial masking ================================ #
+    # Updating mask: _mask = _mask | mask_thresh
     mask_thresh = _set_thresh_mask(
         arr=arr,
         mask=_mask,
@@ -994,15 +528,18 @@ def ndcombine(
         update_mask=True
     )
 
-    # Backup the pixels which are rejected by thresholding for future
-    # restoration (see below) for debugging purpose.
-    backup_thresh = arr[mask_thresh]
+    # if safemode:
+    #     # Backup the pixels which are rejected by thresholding and
+    #     # initial mask for future restoration (see below) for debugging
+    #     # purpose.
+    #     backup_thresh = arr[mask_thresh]
+    #     backup_thresh_inmask = arr[_mask]
+
     arr[_mask] = np.nan
     # ----------------------------------------------------------------------- #
 
     # == 02 - Calculate zero, scale, weights ================================ #
     # This should be done before rejection but after threshold masking..
-    # If it were done before threshold masking, it must have been much easier.
     zeros, scales, weights = get_zsw(
         arr=arr,
         zero=zero,
@@ -1017,28 +554,54 @@ def ndcombine(
     # ----------------------------------------------------------------------- #
 
     # == 02 - Rejection ===================================================== #
-    if reject == 'sigclip':
-        mask_rej, low, upp, nit, rejcode = sigclip_mask(
-            arr,
-            mask=_mask,
-            sigma_lower=sigma_lower,
-            sigma_upper=sigma_upper,
-            maxiters=maxiters,
-            ddof=ddof,
-            nkeep=nkeep,
-            maxrej=maxrej,
-            cenfunc=cenfunc,
-            axis=0,
-            satlevel=satlevel,
-            irafmode=irafmode,
-            full=True
-        )
-    elif reject == 'minmax':
-        pass
-    elif reject == 'ccdclip':
-        pass
-    elif reject == 'pclip':
-        pass
+    if isinstance(reject, str):
+        if reject == 'sigclip':
+            _mask_rej, low, upp, nit, rejcode = sigclip_mask(
+                arr,
+                mask=_mask,
+                sigma_lower=sigma_lower,
+                sigma_upper=sigma_upper,
+                maxiters=maxiters,
+                ddof=ddof,
+                nkeep=nkeep,
+                maxrej=maxrej,
+                cenfunc=cenfunc,
+                axis=0,
+                irafmode=irafmode,
+                full=True
+            )
+            # _mask is a subset of _mask_rej, so to extract pixels which
+            # are masked PURELY due to the rejection is:
+            mask_rej = _mask_rej ^ _mask
+        elif reject == 'minmax':
+            pass
+        elif reject == 'ccdclip':
+            _mask_rej, low, upp, nit, rejcode = ccdclip_mask(
+                arr,
+                mask=_mask,
+                sigma_lower=sigma_lower,
+                sigma_upper=sigma_upper,
+                scale_ref=np.mean(scales),
+                zero_ref=np.mean(zeros),
+                maxiters=maxiters,
+                ddof=ddof,
+                nkeep=nkeep,
+                maxrej=maxrej,
+                cenfunc=cenfunc,
+                axis=0,
+                gain=gain,
+                rdnoise=rdnoise,
+                snoise=snoise,
+                irafmode=irafmode,
+                full=True
+            )
+            # _mask is a subset of _mask_rej, so to extract pixels which
+            # are masked PURELY due to the rejection is:
+            mask_rej = _mask_rej ^ _mask
+        elif reject == 'pclip':
+            pass
+        else:
+            raise ValueError("reject not understood.")
     elif reject is None:
         mask_rej = _set_mask(arr, None)
         low = bn.nanmin(arr, axis=0)
@@ -1049,6 +612,7 @@ def ndcombine(
         raise ValueError("reject not understood.")
 
     _mask |= mask_rej
+
     # ----------------------------------------------------------------------- #
 
     # TODO: add "grow" rejection here?
@@ -1056,16 +620,17 @@ def ndcombine(
     # == 03 - combine ======================================================= #
     # Replace rejected / masked pixel to NaN and backup for debugging purpose.
     # This is done to reduce memory (instead of doing _arr = arr.copy())
-    backup_nan = arr[_mask]
+    # backup_nan = arr[_mask]
     arr[_mask] = np.nan
 
-    # Combine and restore NaN-replaced pixels of arr for debugging purpose.
+    # Combine and calc sigma
     comb = combfunc(arr, axis=0)
     if full:
         sigma = bn.nanstd(arr, axis=0)
 
-    arr[_mask] = backup_nan
-    arr[mask_thresh] = backup_thresh
+    # Restore NaN-replaced pixels of arr for debugging purpose.
+    # arr[_mask] = backup_nan
+    # arr[mask_thresh] = backup_thresh_inmask
 
     if full:
         return comb, sigma, mask_rej, mask_thresh, low, upp, nit, rejcode
@@ -1073,40 +638,40 @@ def ndcombine(
         return comb
 
 
-'''
-    arr = np.array(arr)
-    ncombine = arr.shape[0]
-    ndim = arr.ndim
-    if ndim < 2:
-        raise ValueError("arr must have ndim > 1!")
-    memused = arr.size*arr.itemsize
-    sh_comb = np.array(arr.shape[1:])  # Shape of final combined image
+ndcombine.__doc__ = ''' Combines the given arr assuming no additional offsets.
 
-    # == organize offsets =============================================== #
-    if isinstance(offsets, str):
-        raise ValueError(
-            "If given arr, offsets must be a list with len=arr.shape[0]."
-        )
-    elif offsets is None:
-        offsets = np.zeros(sh_comb)
-    else:
-        offsets = np.atleast_1d(offsets)  # N x ndim array
-        if offsets.shape[0] != arr.shape[0]:
-            raise ValueError(
-                "If given arr, offset.shape[0] == arr.shape[0]"
-            )
-    # ------------------------------------------------------------------- #
-    offmins = np.min(offsets, axis=0)
-    offmaxs = np.max(offsets, axis=0)
-    sh_comb = sh_comb + offmaxs - offmins
-    mem2use = np.prod(sh_comb) * np.dtype(dtype).itemsize
+    {}
+    #. offsets is not implemented to ndcombine (only to fitscombine).
 
-    if (memused + mem2use) > memlimit:
-        raise ValueError(
-            "If given arr, I cannot handle memory issue. Use fpaths "
-            + "or increase the memlimit."
-        )
+    Parameters
+    ----------
+    arr : ndarray
+        The array to be combined along axis 0.
 
-    # N x ndim of image sizes for each of N images.
-    sizes = np.tile(arr.shape[1:], arr.shape[0]).reshape(arr.shape[0], -1)
-'''
+    mask : ndarray, optional.
+        The mask of bad pixels. If given, it must satisfy
+        ``mask.shape[0]`` identical to the number of images.
+
+    copy : bool, optional.
+        Whether to copy the input array. Set to `True` if you want to
+        keep the original array unchanged. Otherwise, the original array
+        may be destroyed.
+
+    {}
+
+    {}
+
+    Returns
+    -------
+    comb : ndarray
+        The combined array.
+
+    {}
+
+    {}
+    '''.format(docstrings.NDCOMB_NOT_IMPLEMENTED(indent=4),
+               docstrings.OFFSETS_SHORT(indent=4),
+               docstrings.NDCOMB_PARAMETERS_COMMON(indent=4),
+               docstrings.NDCOMB_RETURNS_COMMON(indent=4),
+               docstrings.IMCOMBINE_LINK(indent=4)
+               )
