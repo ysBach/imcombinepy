@@ -1,4 +1,4 @@
-
+import ah_bootstrap
 from setuptools import setup, find_packages
 
 setup_requires = []
