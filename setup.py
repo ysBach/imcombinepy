@@ -1,4 +1,3 @@
-import ah_bootstrap
 from setuptools import setup, find_packages
 
 setup_requires = []
@@ -6,7 +5,11 @@ install_requires = ['numpy',
                     'astropy >= 2.0',
                     'bottleneck']
 
-classifiers = ["Intended Audience :: Science/Research"]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    'Programming Language :: Python :: 3',
+    'License :: OSI Approved :: BSD License'
+]
 
 setup(
     name="imcombinepy",
