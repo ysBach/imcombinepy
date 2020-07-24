@@ -179,7 +179,7 @@ A hint is that ``np.count_nonzero(np.sum(mask_test, axis=0) - nrej_iraf < 0)`` g
 
 Visual Comparison of IRAF and ``imcombinepy`` Results
 -----------------------------------------------------
-
+For this section, I used ``zero='median', zero_to_0th=True, irafmode=True, maxiters=10`` to try to reproduce IRAF results as much as possible.
 
 .. _`Dropbox`: https://www.dropbox.com/sh/ehe696rs0uvh6zd/AABQtCvLdiI133l2tB208wSNa?dl=0
 
@@ -292,3 +292,10 @@ An example of the view:
 
 The difference is not very large, although I am not so comfortable. Some mismatches are, I guess, due to the internal additional rejection/restoration inside IRAF.
 
+Similar comparison using ``reject='ccdclip'``:
+
+.. image:: _static/comparison_x_med_ccd_med_x.png
+
+.. image:: _static/comparison_x_med_ccd_med_x_hist.png
+
+Why is IRAF always lower than ``imcombinepy``..?

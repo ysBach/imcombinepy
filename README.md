@@ -44,12 +44,8 @@ res = imcombine(fpattern=fpattern,
                )
 comb, sigma, mask_total, mask_rej, mask_thresh, low, upp, nit, rejcode = res
 ```
-Most are similar to IRAF's ``IMCOMBINE``. Few different points are
-1. Negative nkeep in IRAF can be separately specified as ``maxrej``. Positive nkeep can be used as ``nkeep``.
-1. ``zero`` and ``scale`` accepts suffix ``_sc``. For example, ``"median_sc"`` means the scaling is done by sigma-clipped median. ``astropy.stats.sigma_clipped_stats`` is used, so the additional keyword arguments for this sigma-clipping can be given as ``scale_kw`` when ``_sc`` is used. Same for ``zero_kw``.
+
 
 # Limitations (Future Works)
-Highest priority comes first:
 1. Chunked combine using memlimit is not completed yet.
-1. Only the sigma-clip is available. Will include ccdclip and pclip.
 1. CLI is not supported yet.
