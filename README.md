@@ -67,6 +67,28 @@ comb, sigma, mask_total, mask_rej, mask_thresh, low, upp, nit, rejcode = res
 ```
 
 
+
+## Differences
+
+|                                                      | IRAF IMCOMBINE | ``ccdproc`` | ``imcombinepy`` | comments                                                     |
+| ---------------------------------------------------- | -------------- | ----------- | --------------- | ------------------------------------------------------------ |
+| N-D array?                                           | O              | △           | O               | ``ccdproc``: only 2-D                                        |
+| combine: lower-median                                | O              | X           | △               | lower-median made using ``numpy_util.py`` (slow)             |
+| combine: offsets of images                           | △              | X           | O               | IMCOMBINE has a bug when ``offests=wcs``.                    |
+| scale/zero                                           | O              | △           | O               | multiplicative scaling is possible by ``scale``.             |
+| scale/zero with sigma-clip                           | X              | X           | O               |                                                              |
+| rejection algorithm: iterations in the rejection     | △              | X           | O               | IRAF has infinite iterations, ``ccdproc`` has a single iteration. |
+| rejection algorithm: number of pixels to keep/reject | △              | X           | O               | IRAF can specify only one of these (nkeep, maxrej)           |
+| rejection algorithm: lower-median centering          | X              | X           | △               | lower-median made using ``numpy_util.py`` (slow)             |
+| rejection algorithm: ccdclip                         | O              | X           | O               |                                                              |
+| rejection algorithm: sigclip                         | O              | O           | O               | maxiters fixed for IMCOMBINE and ``ccdproc`` (see above)     |
+| rejection algorithm: extrema                         | X              | O           | X               |                                                              |
+| rejection algorithm: minmax                          | O              | O           | X               |                                                              |
+| rejection algorithm: pclip                           | O              | X           | X               |                                                              |
+
+
+
 ## Limitations (Future Works)
+
 1. Chunked combine using memlimit is not available yet.
 1. CLI is not supported yet.
