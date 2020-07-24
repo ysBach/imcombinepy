@@ -9,7 +9,7 @@ $ cd path/to/clone
 $ git clone https://github.com/ysBach/imcombinepy.git && cd imcombinepy $$ python setup.py install
 ```
 
-# Usage
+## Usage
 
 Simplest use case:
 
@@ -67,6 +67,6 @@ comb, sigma, mask_total, mask_rej, mask_thresh, low, upp, nit, rejcode = res
 ```
 
 
-# Limitations (Future Works)
+## Limitations (Future Works)
 1. Chunked combine using memlimit is not available yet.
 1. CLI is not supported yet.
