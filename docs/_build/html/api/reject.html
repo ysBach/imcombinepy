@@ -1,0 +1,307 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rejection APIs &#8212; imcombinepy v0.0.1</title>
+    <link rel="stylesheet" href="../_static/bootstrap-astropy.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css" />
+    
+    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script async="async" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <script type="text/javascript" src="../_static/sidebar.js"></script>
+    <script type="text/javascript" src="../_static/copybutton.js"></script>
+    <link rel="shortcut icon" href="../_static/astropy_logo.ico"/>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Comparison with IRAF" href="../IRAFcomparison.html" />
+    <link rel="prev" title="The Rejection Algorithms" href="../rejection-algorithm.html" />
+    <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:200,600' rel='stylesheet' type='text/css'/>
+
+  </head><body>
+<div class="topbar">
+  <a class="brand" title="Documentation Home" href="../index.html"><span id="logotext1">imcombine</span><span id="logotext2">py</span><span id="logotext3">:docs</span></a>
+  <ul>
+    
+    <li><a class="homelink" title="Astropy Homepage" href="http://www.astropy.org"></a></li>
+    <li><a title="General Index" href="../genindex.html">Index</a></li>
+    <li><a title="Module Index" href="../py-modindex.html">Modules</a></li>
+    <li>
+      
+      
+<form action="../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <input type="hidden" name="check_keywords" value="yes" />
+  <input type="hidden" name="area" value="default" />
+</form>
+      
+    </li>
+  </ul>
+</div>
+
+<div class="related">
+    <h3>Navigation</h3>
+    <ul>
+      <li class="right">
+	<a href="../IRAFcomparison.html" title="Comparison with IRAF">
+	  next &raquo;
+	</a>
+      </li>
+      <li class="right">
+	<a href="../rejection-algorithm.html" title="The Rejection Algorithms">
+	  &laquo; previous
+	</a>
+	 |
+      </li>
+      <li>
+	<a href="../index.html">imcombinepy v0.0.1</a>
+	 &#187;
+      </li>
+      <li><a href="../rejection-algorithm.html" accesskey="U">The Rejection Algorithms</a> &#187;</li>
+      
+      <li>Rejection APIs</li> 
+    </ul>
+</div>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="rejection-apis">
+<span id="rejection"></span><h1>Rejection APIs<a class="headerlink" href="#rejection-apis" title="Permalink to this headline">¶</a></h1>
+<p>See <a class="reference external" href="https://github.com/ysBach/imcombinepy/tree/master/bench/bench_isnan.md">bench_isnan.md</a> why <code class="docutils literal notranslate"><span class="pre">nanXXX</span></code> functions are used (e.g., not <code class="docutils literal notranslate"><span class="pre">median</span></code> instead of <code class="docutils literal notranslate"><span class="pre">nanmedian</span></code>).</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Tips to use the returned masks from the functions below:</p>
+<ol class="arabic simple">
+<li><p>The number of rejected points: <code class="docutils literal notranslate"><span class="pre">np.count_nonzero(o_mask,</span> <span class="pre">axis=0)</span></code>.</p></li>
+<li><p>The original <code class="docutils literal notranslate"><span class="pre">mask</span></code> is propagated, so the mask for pixels masked <em>purely</em> from rejection algorithm is obtained by <code class="docutils literal notranslate"><span class="pre">o_mask^mask</span></code> (which is the <code class="docutils literal notranslate"><span class="pre">mask_rej</span></code> of <a class="reference internal" href="combine.html#imcombinepy.combine.fitscombine" title="imcombinepy.combine.fitscombine"><code class="xref py py-func docutils literal notranslate"><span class="pre">fitscombine()</span></code></a> or <a class="reference internal" href="combine.html#imcombinepy.combine.ndcombine" title="imcombinepy.combine.ndcombine"><code class="xref py py-func docutils literal notranslate"><span class="pre">ndcombine()</span></code></a>), because the input <code class="docutils literal notranslate"><span class="pre">mask</span></code> is a subset of <code class="docutils literal notranslate"><span class="pre">o_mask</span></code>.</p></li>
+</ol>
+</div>
+<div class="section" id="ccdclip-mask">
+<h2><a class="reference internal" href="#imcombinepy.reject.ccdclip_mask" title="imcombinepy.reject.ccdclip_mask"><code class="xref py py-func docutils literal notranslate"><span class="pre">ccdclip_mask()</span></code></a><a class="headerlink" href="#ccdclip-mask" title="Permalink to this headline">¶</a></h2>
+<dl class="py function">
+<dt id="imcombinepy.reject.ccdclip_mask">
+<code class="sig-prename descclassname">imcombinepy.reject.</code><code class="sig-name descname">ccdclip_mask</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">arr</span></em>, <em class="sig-param"><span class="n">mask</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">sigma</span><span class="o">=</span><span class="default_value">3.0</span></em>, <em class="sig-param"><span class="n">sigma_lower</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">sigma_upper</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">scale_ref</span><span class="o">=</span><span class="default_value">1</span></em>, <em class="sig-param"><span class="n">zero_ref</span><span class="o">=</span><span class="default_value">0</span></em>, <em class="sig-param"><span class="n">maxiters</span><span class="o">=</span><span class="default_value">5</span></em>, <em class="sig-param"><span class="n">gain</span><span class="o">=</span><span class="default_value">1.0</span></em>, <em class="sig-param"><span class="n">rdnoise</span><span class="o">=</span><span class="default_value">0.0</span></em>, <em class="sig-param"><span class="n">snoise</span><span class="o">=</span><span class="default_value">0.0</span></em>, <em class="sig-param"><span class="n">dtype</span><span class="o">=</span><span class="default_value">'float32'</span></em>, <em class="sig-param"><span class="n">ddof</span><span class="o">=</span><span class="default_value">0</span></em>, <em class="sig-param"><span class="n">nkeep</span><span class="o">=</span><span class="default_value">3</span></em>, <em class="sig-param"><span class="n">maxrej</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">cenfunc</span><span class="o">=</span><span class="default_value">'median'</span></em>, <em class="sig-param"><span class="n">irafmode</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">axis</span><span class="o">=</span><span class="default_value">0</span></em>, <em class="sig-param"><span class="n">full</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/imcombinepy/reject.html#ccdclip_mask"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#imcombinepy.reject.ccdclip_mask" title="Permalink to this definition">¶</a></dt>
+<dd><p>Finds masks of <code class="docutils literal notranslate"><span class="pre">arr</span></code> by CCD noise model.</p>
+<dl class="field-list">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><dl>
+<dt><strong>arr</strong><span class="classifier">ndarray</span></dt><dd><p>The array to be subjected for masking. <code class="docutils literal notranslate"><span class="pre">arr</span></code> and <code class="docutils literal notranslate"><span class="pre">mask</span></code> must
+have the identical shape. It must be in DN, i.e., <strong>not</strong> gain
+corrected.</p>
+</dd>
+<dt><strong>mask</strong><span class="classifier">ndarray, optional.</span></dt><dd><p>The initial mask provided prior to any rejection. <code class="docutils literal notranslate"><span class="pre">arr</span></code> and
+<code class="docutils literal notranslate"><span class="pre">mask</span></code> must have the identical shape.</p>
+</dd>
+<dt><strong>sigma</strong><span class="classifier">float-like, optional.</span></dt><dd><p>The sigma-factors to be muiltiplied to the sigma values. Overridden
+by <code class="docutils literal notranslate"><span class="pre">sigma_lower</span></code> and/or <code class="docutils literal notranslate"><span class="pre">sigma_upper</span></code>, if input.</p>
+</dd>
+<dt><strong>sigma_lower</strong><span class="classifier">float or <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a>, optional</span></dt><dd><p>The number of standard deviations to use as the lower bound for the
+clipping limit. If <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a> then the value of <code class="docutils literal notranslate"><span class="pre">sigma</span></code> is used. The
+default is <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a>.</p>
+</dd>
+<dt><strong>sigma_upper</strong><span class="classifier">float or <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a>, optional</span></dt><dd><p>The number of standard deviations to use as the upper bound for the
+clipping limit. If <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a> then the value of <code class="docutils literal notranslate"><span class="pre">sigma</span></code> is used. The
+default is <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a>.</p>
+</dd>
+<dt><strong>maxiters</strong><span class="classifier">int, optional.</span></dt><dd><p>The maximum number of iterations to do the rejection. It is silently
+converted to int if it is not.</p>
+</dd>
+<dt><strong>ddof</strong><span class="classifier">int, optional.</span></dt><dd><p>The delta-degrees of freedom (see <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.std.html#numpy.std" title="(in NumPy v1.19)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">numpy.std</span></code></a>). It is silently
+converted to int if it is not.</p>
+</dd>
+<dt><strong>nkeep</strong><span class="classifier">float or int, optional.</span></dt><dd><p>The minimum number of pixels that should be left after rejection. If
+<code class="docutils literal notranslate"><span class="pre">nkeep</span> <span class="pre">&lt;</span> <span class="pre">1</span></code>, it is regarded as fraction of the total number of
+pixels along the axis to combine.</p>
+</dd>
+<dt><strong>maxrej</strong><span class="classifier">float or int, optional.</span></dt><dd><p>The maximum number of pixels that can be rejected during the
+rejection. If <code class="docutils literal notranslate"><span class="pre">maxrej</span> <span class="pre">&lt;</span> <span class="pre">1</span></code>, it is regarded as fraction of the
+total number of pixels along the axis to combine.</p>
+</dd>
+<dt><strong>cenfunc</strong><span class="classifier">str, optional.</span></dt><dd><p>The centering function to be used.</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>median if  <code class="docutils literal notranslate"><span class="pre">cenfunc</span> <span class="pre">in</span> <span class="pre">['med',</span> <span class="pre">'medi',</span> <span class="pre">'median']</span></code></p></li>
+<li><p>average if <code class="docutils literal notranslate"><span class="pre">cenfunc</span> <span class="pre">in</span> <span class="pre">['avg',</span> <span class="pre">'average',</span> <span class="pre">'mean']</span></code></p></li>
+<li><p>lower median if <code class="docutils literal notranslate"><span class="pre">cenfunc</span> <span class="pre">in</span> <span class="pre">['lmed',</span> <span class="pre">'lmd',</span> <span class="pre">'lmedian']</span></code></p></li>
+</ul>
+</div></blockquote>
+<p>The lower median means the median which takes the lower value
+when even number of data is left. This is suggested to be robust
+against cosmic-ray hit according to IRAF IMCOMBINE manual.</p>
+</dd>
+<dt><strong>irafmode</strong><span class="classifier">bool, optional.</span></dt><dd><p>Whether to use IRAF-like pixel restoration scheme. Default is
+<a class="reference external" href="https://docs.python.org/3/library/constants.html#True" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">True</span></code></a>.</p>
+</dd>
+<dt><strong>axis</strong><span class="classifier">int, optional.</span></dt><dd><p>The axis to combine the image.</p>
+</dd>
+<dt><strong>full</strong><span class="classifier">bool, optional.</span></dt><dd><p>Whether to return full results. See Return.</p>
+</dd>
+</dl>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><dl>
+<dt><strong>o_mask</strong><span class="classifier">ndarray of bool</span></dt><dd><p>The mask of the same shape as <code class="docutils literal notranslate"><span class="pre">arr</span></code> and <code class="docutils literal notranslate"><span class="pre">mask</span></code>.</p>
+</dd>
+<dt><strong>o_low, o_upp</strong><span class="classifier">ndarray of <code class="docutils literal notranslate"><span class="pre">dtype</span></code></span></dt><dd><p>Returned only if <code class="docutils literal notranslate"><span class="pre">full</span> <span class="pre">=</span> <span class="pre">True</span></code>. The lower and upper bounds
+used for sigma clipping. Data with <code class="docutils literal notranslate"><span class="pre">(arr</span> <span class="pre">&lt;</span> <span class="pre">o_low)</span> <span class="pre">|</span> <span class="pre">(o_upp</span> <span class="pre">&lt;</span>
+<span class="pre">arr)</span></code> are masked. Shape of <code class="docutils literal notranslate"><span class="pre">arr.shape[1:]</span></code>.</p>
+</dd>
+<dt><strong>o_nit</strong><span class="classifier">ndarray of int or int</span></dt><dd><p>Returned only if <code class="docutils literal notranslate"><span class="pre">full</span> <span class="pre">=</span> <span class="pre">True</span></code>. The number of iterations until
+it is halted.</p>
+</dd>
+<dt><strong>o_code</strong><span class="classifier">ndarray of uint8</span></dt><dd><p>Returned only if <code class="docutils literal notranslate"><span class="pre">full</span> <span class="pre">=</span> <span class="pre">True</span></code>. Each element is a <code class="docutils literal notranslate"><span class="pre">uint8</span></code>
+value with:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">*</span>      <span class="p">(</span><span class="mi">0</span><span class="p">):</span> <span class="n">maxiters</span> <span class="n">reached</span> <span class="n">without</span> <span class="nb">any</span> <span class="n">flag</span> <span class="n">below</span>
+<span class="o">*</span> <span class="mi">1</span><span class="o">-</span><span class="n">th</span> <span class="p">(</span><span class="mi">1</span><span class="p">):</span> <span class="n">maxiters</span> <span class="o">==</span> <span class="mi">0</span> <span class="p">(</span><span class="n">no</span> <span class="n">iteration</span> <span class="n">happened</span><span class="p">)</span>
+<span class="o">*</span> <span class="mi">2</span><span class="o">-</span><span class="n">th</span> <span class="p">(</span><span class="mi">2</span><span class="p">):</span> <span class="n">iteration</span> <span class="n">finished</span> <span class="n">before</span> <span class="n">maxiters</span> <span class="n">reached</span>
+<span class="o">*</span> <span class="mi">3</span><span class="o">-</span><span class="n">th</span> <span class="p">(</span><span class="mi">4</span><span class="p">):</span> <span class="n">remaining</span> <span class="n">ndata</span> <span class="o">&lt;</span> <span class="n">nkeep</span> <span class="n">reached</span>
+<span class="o">*</span> <span class="mi">4</span><span class="o">-</span><span class="n">th</span> <span class="p">(</span><span class="mi">8</span><span class="p">):</span> <span class="n">rejected</span> <span class="n">ndata</span> <span class="o">&gt;</span> <span class="n">maxrej</span> <span class="n">reached</span>
+</pre></div>
+</div>
+<p>The code of 10 is, for example, 1010 in binary, so the iteration
+finished before <code class="docutils literal notranslate"><span class="pre">maxiters</span></code> (2-th flag) because pixels more
+than <code class="docutils literal notranslate"><span class="pre">maxrej</span></code> are rejected (4-th flag).</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="section" id="sigclip-mask">
+<h2><a class="reference internal" href="#imcombinepy.reject.sigclip_mask" title="imcombinepy.reject.sigclip_mask"><code class="xref py py-func docutils literal notranslate"><span class="pre">sigclip_mask()</span></code></a><a class="headerlink" href="#sigclip-mask" title="Permalink to this headline">¶</a></h2>
+<dl class="py function">
+<dt id="imcombinepy.reject.sigclip_mask">
+<code class="sig-prename descclassname">imcombinepy.reject.</code><code class="sig-name descname">sigclip_mask</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">arr</span></em>, <em class="sig-param"><span class="n">mask</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">sigma</span><span class="o">=</span><span class="default_value">3.0</span></em>, <em class="sig-param"><span class="n">sigma_lower</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">sigma_upper</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">maxiters</span><span class="o">=</span><span class="default_value">5</span></em>, <em class="sig-param"><span class="n">ddof</span><span class="o">=</span><span class="default_value">0</span></em>, <em class="sig-param"><span class="n">nkeep</span><span class="o">=</span><span class="default_value">3</span></em>, <em class="sig-param"><span class="n">maxrej</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">cenfunc</span><span class="o">=</span><span class="default_value">'median'</span></em>, <em class="sig-param"><span class="n">irafmode</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">axis</span><span class="o">=</span><span class="default_value">0</span></em>, <em class="sig-param"><span class="n">full</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/imcombinepy/reject.html#sigclip_mask"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#imcombinepy.reject.sigclip_mask" title="Permalink to this definition">¶</a></dt>
+<dd><p>Finds masks of <code class="docutils literal notranslate"><span class="pre">arr</span></code> by sigma-clipping.</p>
+<dl class="field-list">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><dl>
+<dt><strong>arr</strong><span class="classifier">ndarray</span></dt><dd><p>The array to be subjected for masking. <code class="docutils literal notranslate"><span class="pre">arr</span></code> and <code class="docutils literal notranslate"><span class="pre">mask</span></code> must
+have the identical shape.</p>
+</dd>
+<dt><strong>mask</strong><span class="classifier">ndarray, optional.</span></dt><dd><p>The initial mask provided prior to any rejection. <code class="docutils literal notranslate"><span class="pre">arr</span></code> and
+<code class="docutils literal notranslate"><span class="pre">mask</span></code> must have the identical shape.</p>
+</dd>
+<dt><strong>sigma</strong><span class="classifier">float-like, optional.</span></dt><dd><p>The sigma-factors to be muiltiplied to the sigma values. Overridden
+by <code class="docutils literal notranslate"><span class="pre">sigma_lower</span></code> and/or <code class="docutils literal notranslate"><span class="pre">sigma_upper</span></code>, if input.</p>
+</dd>
+<dt><strong>sigma_lower</strong><span class="classifier">float or <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a>, optional</span></dt><dd><p>The number of standard deviations to use as the lower bound for the
+clipping limit. If <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a> then the value of <code class="docutils literal notranslate"><span class="pre">sigma</span></code> is used. The
+default is <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a>.</p>
+</dd>
+<dt><strong>sigma_upper</strong><span class="classifier">float or <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a>, optional</span></dt><dd><p>The number of standard deviations to use as the upper bound for the
+clipping limit. If <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a> then the value of <code class="docutils literal notranslate"><span class="pre">sigma</span></code> is used. The
+default is <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a>.</p>
+</dd>
+<dt><strong>maxiters</strong><span class="classifier">int, optional.</span></dt><dd><p>The maximum number of iterations to do the rejection. It is silently
+converted to int if it is not.</p>
+</dd>
+<dt><strong>ddof</strong><span class="classifier">int, optional.</span></dt><dd><p>The delta-degrees of freedom (see <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.std.html#numpy.std" title="(in NumPy v1.19)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">numpy.std</span></code></a>). It is silently
+converted to int if it is not.</p>
+</dd>
+<dt><strong>nkeep</strong><span class="classifier">float or int, optional.</span></dt><dd><p>The minimum number of pixels that should be left after rejection. If
+<code class="docutils literal notranslate"><span class="pre">nkeep</span> <span class="pre">&lt;</span> <span class="pre">1</span></code>, it is regarded as fraction of the total number of
+pixels along the axis to combine.</p>
+</dd>
+<dt><strong>maxrej</strong><span class="classifier">float or int, optional.</span></dt><dd><p>The maximum number of pixels that can be rejected during the
+rejection. If <code class="docutils literal notranslate"><span class="pre">maxrej</span> <span class="pre">&lt;</span> <span class="pre">1</span></code>, it is regarded as fraction of the
+total number of pixels along the axis to combine.</p>
+</dd>
+<dt><strong>cenfunc</strong><span class="classifier">str, optional.</span></dt><dd><p>The centering function to be used.</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>median if  <code class="docutils literal notranslate"><span class="pre">cenfunc</span> <span class="pre">in</span> <span class="pre">['med',</span> <span class="pre">'medi',</span> <span class="pre">'median']</span></code></p></li>
+<li><p>average if <code class="docutils literal notranslate"><span class="pre">cenfunc</span> <span class="pre">in</span> <span class="pre">['avg',</span> <span class="pre">'average',</span> <span class="pre">'mean']</span></code></p></li>
+<li><p>lower median if <code class="docutils literal notranslate"><span class="pre">cenfunc</span> <span class="pre">in</span> <span class="pre">['lmed',</span> <span class="pre">'lmd',</span> <span class="pre">'lmedian']</span></code></p></li>
+</ul>
+</div></blockquote>
+<p>The lower median means the median which takes the lower value
+when even number of data is left. This is suggested to be robust
+against cosmic-ray hit according to IRAF IMCOMBINE manual.</p>
+</dd>
+<dt><strong>irafmode</strong><span class="classifier">bool, optional.</span></dt><dd><p>Whether to use IRAF-like pixel restoration scheme. Default is
+<a class="reference external" href="https://docs.python.org/3/library/constants.html#True" title="(in Python v3.8)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">True</span></code></a>.</p>
+</dd>
+<dt><strong>axis</strong><span class="classifier">int, optional.</span></dt><dd><p>The axis to combine the image.</p>
+</dd>
+<dt><strong>full</strong><span class="classifier">bool, optional.</span></dt><dd><p>Whether to return full results. See Return.</p>
+</dd>
+</dl>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><dl>
+<dt><strong>o_mask</strong><span class="classifier">ndarray of bool</span></dt><dd><p>The mask of the same shape as <code class="docutils literal notranslate"><span class="pre">arr</span></code> and <code class="docutils literal notranslate"><span class="pre">mask</span></code>.</p>
+</dd>
+<dt><strong>o_low, o_upp</strong><span class="classifier">ndarray of <code class="docutils literal notranslate"><span class="pre">dtype</span></code></span></dt><dd><p>Returned only if <code class="docutils literal notranslate"><span class="pre">full</span> <span class="pre">=</span> <span class="pre">True</span></code>. The lower and upper bounds
+used for sigma clipping. Data with <code class="docutils literal notranslate"><span class="pre">(arr</span> <span class="pre">&lt;</span> <span class="pre">o_low)</span> <span class="pre">|</span> <span class="pre">(o_upp</span> <span class="pre">&lt;</span>
+<span class="pre">arr)</span></code> are masked. Shape of <code class="docutils literal notranslate"><span class="pre">arr.shape[1:]</span></code>.</p>
+</dd>
+<dt><strong>o_nit</strong><span class="classifier">ndarray of int or int</span></dt><dd><p>Returned only if <code class="docutils literal notranslate"><span class="pre">full</span> <span class="pre">=</span> <span class="pre">True</span></code>. The number of iterations until
+it is halted.</p>
+</dd>
+<dt><strong>o_code</strong><span class="classifier">ndarray of uint8</span></dt><dd><p>Returned only if <code class="docutils literal notranslate"><span class="pre">full</span> <span class="pre">=</span> <span class="pre">True</span></code>. Each element is a <code class="docutils literal notranslate"><span class="pre">uint8</span></code>
+value with:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">*</span>      <span class="p">(</span><span class="mi">0</span><span class="p">):</span> <span class="n">maxiters</span> <span class="n">reached</span> <span class="n">without</span> <span class="nb">any</span> <span class="n">flag</span> <span class="n">below</span>
+<span class="o">*</span> <span class="mi">1</span><span class="o">-</span><span class="n">th</span> <span class="p">(</span><span class="mi">1</span><span class="p">):</span> <span class="n">maxiters</span> <span class="o">==</span> <span class="mi">0</span> <span class="p">(</span><span class="n">no</span> <span class="n">iteration</span> <span class="n">happened</span><span class="p">)</span>
+<span class="o">*</span> <span class="mi">2</span><span class="o">-</span><span class="n">th</span> <span class="p">(</span><span class="mi">2</span><span class="p">):</span> <span class="n">iteration</span> <span class="n">finished</span> <span class="n">before</span> <span class="n">maxiters</span> <span class="n">reached</span>
+<span class="o">*</span> <span class="mi">3</span><span class="o">-</span><span class="n">th</span> <span class="p">(</span><span class="mi">4</span><span class="p">):</span> <span class="n">remaining</span> <span class="n">ndata</span> <span class="o">&lt;</span> <span class="n">nkeep</span> <span class="n">reached</span>
+<span class="o">*</span> <span class="mi">4</span><span class="o">-</span><span class="n">th</span> <span class="p">(</span><span class="mi">8</span><span class="p">):</span> <span class="n">rejected</span> <span class="n">ndata</span> <span class="o">&gt;</span> <span class="n">maxrej</span> <span class="n">reached</span>
+</pre></div>
+</div>
+<p>The code of 10 is, for example, 1010 in binary, so the iteration
+finished before <code class="docutils literal notranslate"><span class="pre">maxiters</span></code> (2-th flag) because pixels more
+than <code class="docutils literal notranslate"><span class="pre">maxrej</span></code> are rejected (4-th flag).</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+</div>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><h3>Page Contents</h3>
+<ul>
+<li><a class="reference internal" href="#">Rejection APIs</a><ul>
+<li><a class="reference internal" href="#ccdclip-mask"><code class="xref py py-func docutils literal notranslate"><span class="pre">ccdclip_mask()</span></code></a></li>
+<li><a class="reference internal" href="#sigclip-mask"><code class="xref py py-func docutils literal notranslate"><span class="pre">sigclip_mask()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+<footer class="footer">
+  <p class="pull-right">
+    <a href="../_sources/api/reject.rst.txt"
+       rel="nofollow">Page Source</a> &nbsp;
+    <a href="#">Back to Top</a></p>
+  <p>
+    &copy; Copyright 2020-2020, Yoonsoo P. Bach.<br/>
+    Created using <a href="http://www.sphinx-doc.org/en/stable/">Sphinx</a> 3.1.2. &nbsp;
+    Last built 2020-07-24 16:39:16 (GMT+09:00). <br/>
+  </p>
+</footer>
+  </body>
+</html>

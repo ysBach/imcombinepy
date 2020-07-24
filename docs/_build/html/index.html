@@ -1,0 +1,182 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>imcombinepy Documentation &#8212; imcombinepy v0.0.1</title>
+    <link rel="stylesheet" href="_static/bootstrap-astropy.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css" />
+    
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/language_data.js"></script>
+    <script async="async" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <script type="text/javascript" src="_static/sidebar.js"></script>
+    <script type="text/javascript" src="_static/copybutton.js"></script>
+    <link rel="shortcut icon" href="_static/astropy_logo.ico"/>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="The Rejection Algorithms" href="rejection-algorithm.html" />
+    <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:200,600' rel='stylesheet' type='text/css'/>
+
+  </head><body>
+<div class="topbar">
+  <a class="brand" title="Documentation Home" href="#"><span id="logotext1">imcombine</span><span id="logotext2">py</span><span id="logotext3">:docs</span></a>
+  <ul>
+    
+    <li><a class="homelink" title="Astropy Homepage" href="http://www.astropy.org"></a></li>
+    <li><a title="General Index" href="genindex.html">Index</a></li>
+    <li><a title="Module Index" href="py-modindex.html">Modules</a></li>
+    <li>
+      
+      
+<form action="search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <input type="hidden" name="check_keywords" value="yes" />
+  <input type="hidden" name="area" value="default" />
+</form>
+      
+    </li>
+  </ul>
+</div>
+
+<div class="related">
+    <h3>Navigation</h3>
+    <ul>
+      <li class="right">
+	<a href="rejection-algorithm.html" title="The Rejection Algorithms">
+	  next &raquo;
+	</a>
+      </li>
+      <li>
+	<a href="#">imcombinepy v0.0.1</a>
+	 &#187;
+      </li>
+      
+       
+    </ul>
+</div>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="imcombinepy-documentation">
+<span id="imcombinepy"></span><h1><code class="docutils literal notranslate"><span class="pre">imcombinepy</span></code> Documentation<a class="headerlink" href="#imcombinepy-documentation" title="Permalink to this headline">¶</a></h1>
+<p>A python package to replace IRAF <a class="reference external" href="https://iraf.net/irafhelp.php?val=imcombine&amp;help=Help+Page">IMCOMBINE</a>
+with both python and CLI interface using bottleneck.</p>
+<div class="section" id="the-image-combining-flow">
+<h2>The Image Combining Flow<a class="headerlink" href="#the-image-combining-flow" title="Permalink to this headline">¶</a></h2>
+<p><a class="reference internal" href="api/combine.html#imcombinepy.combine.ndcombine" title="imcombinepy.combine.ndcombine"><code class="xref py py-func docutils literal notranslate"><span class="pre">ndcombine()</span></code></a> function is intended to be used to help <a class="reference internal" href="api/combine.html#imcombinepy.combine.fitscombine" title="imcombinepy.combine.fitscombine"><code class="xref py py-func docutils literal notranslate"><span class="pre">fitscombine()</span></code></a>. It can be used to combine an ndarray along axis 0. One may use it such as <code class="docutils literal notranslate"><span class="pre">arr</span> <span class="pre">=</span> <span class="pre">[fits.open(fpath)[0].data</span> <span class="pre">for</span> <span class="pre">fpath</span> <span class="pre">in</span> <span class="pre">fpaths]</span></code> so that the combination along axis 0 is what the user may want. The function does the following tasks in this order:</p>
+<ol class="arabic simple">
+<li><p>Mask pixels outside <code class="docutils literal notranslate"><span class="pre">thresholds</span></code>.</p></li>
+<li><p>Scales the frames by <code class="docutils literal notranslate"><span class="pre">scale</span></code>, <code class="docutils literal notranslate"><span class="pre">zero</span></code> and related arguments.</p></li>
+<li><p>Reject pixels based on <code class="docutils literal notranslate"><span class="pre">reject</span></code> and related arguments (see algorithm documentation).</p></li>
+<li><p>Combine images based on <code class="docutils literal notranslate"><span class="pre">combine</span></code>.</p></li>
+</ol>
+<p>The main function, <a class="reference internal" href="api/combine.html#imcombinepy.combine.fitscombine" title="imcombinepy.combine.fitscombine"><code class="xref py py-func docutils literal notranslate"><span class="pre">fitscombine()</span></code></a> does the following tasks in this order:</p>
+<ol class="arabic simple">
+<li><p>Determine the strategy for proper memory limit (not implemented yet).</p></li>
+<li><p>Extract information from header (exposure time, gain, readout noise, sensitivity noise, and WCS if they’re needed).</p></li>
+<li><p>Determine the offset of each frame (if <code class="docutils literal notranslate"><span class="pre">offsets</span></code> is given).</p></li>
+<li><p>Make a new array which has offset-ed array at each slice along axis 0. Blank pixels are filled as <code class="docutils literal notranslate"><span class="pre">np.nan</span></code>.</p></li>
+<li><p>Prepare zero, and scale of each frame (if they are given). If FITS files have <code class="docutils literal notranslate"><span class="pre">'MASK'</span></code> extension, load it and propagate it with the <code class="docutils literal notranslate"><span class="pre">mask</span></code> input by the user.</p></li>
+<li><p>Pass these arguments to <a class="reference internal" href="api/combine.html#imcombinepy.combine.ndcombine" title="imcombinepy.combine.ndcombine"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ndcombine</span></code></a>.</p></li>
+<li><p>Convert the combined image to FITS format (<a class="reference external" href="https://docs.astropy.org/en/stable/io/fits/api/hdus.html#astropy.io.fits.PrimaryHDU" title="(in Astropy v4.0.1)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">astropy.io.fits.PrimaryHDU</span></code></a>) and update header to incorporate with proper WCS information.</p></li>
+<li><p>Save the auxiliary files if output paths are specified.</p></li>
+</ol>
+</div>
+<div class="section" id="documentation">
+<h2>Documentation<a class="headerlink" href="#documentation" title="Permalink to this headline">¶</a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="rejection-algorithm.html">The Rejection Algorithms</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="rejection-algorithm.html#implemented-algorithms">Implemented Algorithms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rejection-algorithm.html#documentations">Documentations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rejection-algorithm.html#module-imcombinepy.reject">Reference/API</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="IRAFcomparison.html">Comparison with IRAF</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="IRAFcomparison.html#testing-iraf-results">Testing IRAF Results</a></li>
+<li class="toctree-l2"><a class="reference internal" href="IRAFcomparison.html#visual-comparison-of-iraf-and-imcombinepy-results">Visual Comparison of IRAF and <code class="docutils literal notranslate"><span class="pre">imcombinepy</span></code> Results</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<div class="section" id="module-imcombinepy.combine">
+<span id="apis"></span><h2>APIs<a class="headerlink" href="#module-imcombinepy.combine" title="Permalink to this headline">¶</a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/combine.html">Combining APIs</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/combine.html#fitscombine"><code class="xref py py-func docutils literal notranslate"><span class="pre">fitscombine()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/combine.html#ndcombine"><code class="xref py py-func docutils literal notranslate"><span class="pre">ndcombine()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</div>
+<span class="target" id="module-imcombinepy.reject"></span><div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/reject.html">Rejection APIs</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/reject.html#ccdclip-mask"><code class="xref py py-func docutils literal notranslate"><span class="pre">ccdclip_mask()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/reject.html#sigclip-mask"><code class="xref py py-func docutils literal notranslate"><span class="pre">sigclip_mask()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<div class="section" id="license">
+<h2>LICENSE<a class="headerlink" href="#license" title="Permalink to this headline">¶</a></h2>
+<p>BSD 3-Clause License</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="license.html">LICENSE</a></li>
+</ul>
+</div>
+</div>
+</div>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><h3>Page Contents</h3>
+<ul>
+<li><a class="reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">imcombinepy</span></code> Documentation</a><ul>
+<li><a class="reference internal" href="#the-image-combining-flow">The Image Combining Flow</a></li>
+<li><a class="reference internal" href="#documentation">Documentation</a></li>
+<li><a class="reference internal" href="#module-imcombinepy.combine">APIs</a><ul>
+</ul>
+</li>
+<li><a class="reference internal" href="#license">LICENSE</a></li>
+</ul>
+</li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+<footer class="footer">
+  <p class="pull-right">
+    <a href="_sources/index.rst.txt"
+       rel="nofollow">Page Source</a> &nbsp;
+    <a href="#">Back to Top</a></p>
+  <p>
+    &copy; Copyright 2020-2020, Yoonsoo P. Bach.<br/>
+    Created using <a href="http://www.sphinx-doc.org/en/stable/">Sphinx</a> 3.1.2. &nbsp;
+    Last built 2020-07-24 16:39:16 (GMT+09:00). <br/>
+  </p>
+</footer>
+  </body>
+</html>

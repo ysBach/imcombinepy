@@ -1,0 +1,387 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>imcombinepy.reject &#8212; imcombinepy v0.0.1</title>
+    <link rel="stylesheet" href="../../_static/bootstrap-astropy.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css" />
+    
+    <script id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/language_data.js"></script>
+    <script async="async" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <script type="text/javascript" src="../../_static/sidebar.js"></script>
+    <script type="text/javascript" src="../../_static/copybutton.js"></script>
+    <link rel="shortcut icon" href="../../_static/astropy_logo.ico"/>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:200,600' rel='stylesheet' type='text/css'/>
+
+  </head><body>
+<div class="topbar">
+  <a class="brand" title="Documentation Home" href="../../index.html"><span id="logotext1">imcombine</span><span id="logotext2">py</span><span id="logotext3">:docs</span></a>
+  <ul>
+    
+    <li><a class="homelink" title="Astropy Homepage" href="http://www.astropy.org"></a></li>
+    <li><a title="General Index" href="../../genindex.html">Index</a></li>
+    <li><a title="Module Index" href="../../py-modindex.html">Modules</a></li>
+    <li>
+      
+      
+<form action="../../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <input type="hidden" name="check_keywords" value="yes" />
+  <input type="hidden" name="area" value="default" />
+</form>
+      
+    </li>
+  </ul>
+</div>
+
+<div class="related">
+    <h3>Navigation</h3>
+    <ul>
+      <li>
+	<a href="../../index.html">imcombinepy v0.0.1</a>
+	 &#187;
+      </li>
+      <li><a href="../index.html" accesskey="U">Module code</a> &#187;</li>
+      
+       
+    </ul>
+</div>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for imcombinepy.reject</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">bottleneck</span> <span class="k">as</span> <span class="nn">bn</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">.</span> <span class="kn">import</span> <span class="n">docstrings</span>
+<span class="kn">from</span> <span class="nn">.util</span> <span class="kn">import</span> <span class="p">(</span><span class="n">_get_dtype_limits</span><span class="p">,</span> <span class="n">_set_cenfunc</span><span class="p">,</span> <span class="n">_set_gain_rdns</span><span class="p">,</span>
+                   <span class="n">_set_keeprej</span><span class="p">,</span> <span class="n">_set_mask</span><span class="p">,</span> <span class="n">_set_sigma</span><span class="p">,</span>
+                   <span class="n">_setup_reject</span><span class="p">,</span> <span class="n">do_zs</span><span class="p">)</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;sigclip_mask&quot;</span><span class="p">]</span>
+
+
+<span class="k">def</span> <span class="nf">_iter_rej</span><span class="p">(</span>
+        <span class="n">arr</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma_lower</span><span class="o">=</span><span class="mf">3.</span><span class="p">,</span> <span class="n">sigma_upper</span><span class="o">=</span><span class="mf">3.</span><span class="p">,</span> <span class="n">maxiters</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">nkeep</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">maxrej</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cenfunc</span><span class="o">=</span><span class="s1">&#39;median&#39;</span><span class="p">,</span> <span class="n">ccdclip</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">irafmode</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">rdnoise_ref</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span> <span class="n">snoise_ref</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span> <span class="n">scale_ref</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">zero_ref</span><span class="o">=</span><span class="mi">0</span>
+<span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; The common function for iterative rejection algorithms.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    arr : ndarray</span>
+<span class="sd">        The array to find the mask. It must be gain-corrected if</span>
+<span class="sd">        ``ccdclip=True``.</span>
+
+<span class="sd">    rdnoise_ref, snoise_ref : float</span>
+<span class="sd">        The representative readnoise and sensitivity noise to estimate</span>
+<span class="sd">        the error-bar for ``ccdclip=True``.</span>
+
+<span class="sd">    scale_ref, zero_ref : float</span>
+<span class="sd">        The representative scaling and zeroing value to estimate the</span>
+<span class="sd">        error-bar for ``ccdclip=True``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># General setup</span>
+    <span class="n">_arr</span><span class="p">,</span> <span class="n">_masks</span><span class="p">,</span> <span class="n">keeprej</span><span class="p">,</span> <span class="n">cenfunc</span><span class="p">,</span> <span class="n">_nvals</span><span class="p">,</span> <span class="n">lowupp</span> <span class="o">=</span> <span class="n">_setup_reject</span><span class="p">(</span>
+        <span class="n">arr</span><span class="o">=</span><span class="n">arr</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">,</span> <span class="n">nkeep</span><span class="o">=</span><span class="n">nkeep</span><span class="p">,</span> <span class="n">maxrej</span><span class="o">=</span><span class="n">maxrej</span><span class="p">,</span> <span class="n">cenfunc</span><span class="o">=</span><span class="n">cenfunc</span>
+    <span class="p">)</span>
+    <span class="n">mask_nan</span><span class="p">,</span> <span class="n">mask_nkeep</span><span class="p">,</span> <span class="n">mask_maxrej</span><span class="p">,</span> <span class="n">mask_pix</span> <span class="o">=</span> <span class="n">_masks</span>
+    <span class="n">nkeep</span><span class="p">,</span> <span class="n">maxrej</span> <span class="o">=</span> <span class="n">keeprej</span>
+    <span class="n">nit</span><span class="p">,</span> <span class="n">ncombine</span><span class="p">,</span> <span class="n">n_finite_old</span> <span class="o">=</span> <span class="n">_nvals</span>
+    <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">low_new</span><span class="p">,</span> <span class="n">upp_new</span> <span class="o">=</span> <span class="n">lowupp</span>
+
+    <span class="n">nrej</span> <span class="o">=</span> <span class="n">ncombine</span> <span class="o">-</span> <span class="n">n_finite_old</span>  <span class="c1"># same as nrej_old at the moment</span>
+    <span class="n">k</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="c1"># mask_pix is where **NO** rejection should occur.</span>
+    <span class="k">while</span> <span class="n">k</span> <span class="o">&lt;</span> <span class="n">maxiters</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">ccdclip</span><span class="p">:</span>
+            <span class="n">cen</span> <span class="o">=</span> <span class="n">cenfunc</span><span class="p">(</span><span class="n">_arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="c1"># use absolute of cen to avoid NaN from negative pixels.</span>
+            <span class="n">std</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">((</span><span class="mi">1</span> <span class="o">+</span> <span class="n">snoise_ref</span><span class="p">)</span>
+                       <span class="o">*</span> <span class="p">(</span><span class="n">cen</span> <span class="o">+</span> <span class="n">zero_ref</span><span class="p">)</span>
+                       <span class="o">*</span> <span class="n">scale_ref</span><span class="p">)</span>  <span class="c1"># restore zeroing &amp; scaling</span>
+                <span class="o">+</span> <span class="n">rdnoise_ref</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">cen</span> <span class="o">=</span> <span class="n">cenfunc</span><span class="p">(</span><span class="n">_arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">std</span> <span class="o">=</span> <span class="n">bn</span><span class="o">.</span><span class="n">nanstd</span><span class="p">(</span><span class="n">_arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="n">ddof</span><span class="p">)</span>
+        <span class="n">low_new</span><span class="p">[</span><span class="o">~</span><span class="n">mask_pix</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">cen</span> <span class="o">-</span> <span class="n">sigma_lower</span><span class="o">*</span><span class="n">std</span><span class="p">)[</span><span class="o">~</span><span class="n">mask_pix</span><span class="p">]</span>
+        <span class="n">upp_new</span><span class="p">[</span><span class="o">~</span><span class="n">mask_pix</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">cen</span> <span class="o">+</span> <span class="n">sigma_upper</span><span class="o">*</span><span class="n">std</span><span class="p">)[</span><span class="o">~</span><span class="n">mask_pix</span><span class="p">]</span>
+
+        <span class="c1"># In numpy, &gt; or &lt; automatically applies along axis=0!!</span>
+        <span class="n">mask_bound</span> <span class="o">=</span> <span class="p">(</span><span class="n">_arr</span> <span class="o">&lt;</span> <span class="n">low_new</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">_arr</span> <span class="o">&gt;</span> <span class="n">upp_new</span><span class="p">)</span> <span class="o">|</span> <span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">_arr</span><span class="p">)</span>
+        <span class="n">_arr</span><span class="p">[</span><span class="n">mask_bound</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+        <span class="n">n_finite_new</span> <span class="o">=</span> <span class="n">ncombine</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">count_nonzero</span><span class="p">(</span><span class="n">mask_bound</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">n_change</span> <span class="o">=</span> <span class="n">n_finite_old</span> <span class="o">-</span> <span class="n">n_finite_new</span>
+        <span class="n">total_change</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">n_change</span><span class="p">)</span>
+
+        <span class="n">mask_nochange</span> <span class="o">=</span> <span class="p">(</span><span class="n">n_change</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>  <span class="c1"># identical to say &quot;max-iter reached&quot;</span>
+        <span class="n">mask_nkeep</span> <span class="o">=</span> <span class="p">((</span><span class="n">ncombine</span> <span class="o">-</span> <span class="n">nrej</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">nkeep</span><span class="p">)</span>
+        <span class="n">mask_maxrej</span> <span class="o">=</span> <span class="p">(</span><span class="n">nrej</span> <span class="o">&gt;</span> <span class="n">maxrej</span><span class="p">)</span>
+
+        <span class="c1"># mask pixel position if any of these happened.</span>
+        <span class="c1"># Including mask_nochange here will not change results but only</span>
+        <span class="c1"># spend more time.</span>
+        <span class="n">mask_pix</span> <span class="o">=</span> <span class="n">mask_nkeep</span> <span class="o">|</span> <span class="n">mask_maxrej</span>
+
+        <span class="c1"># revert to the previous ones if masked.</span>
+        <span class="c1"># By doing this, pixels which was mask_nkeep now, e.g., will</span>
+        <span class="c1"># again be True in mask_nkeep in the next iter but unchanged.</span>
+        <span class="c1"># This should be done at every iteration (unfortunately)</span>
+        <span class="c1"># because, e.g., if nkeep is very large, excessive rejection may</span>
+        <span class="c1"># happen for many times, and the restoration CANNOT be done</span>
+        <span class="c1"># after all the iterations.</span>
+        <span class="n">low_new</span><span class="p">[</span><span class="n">mask_pix</span><span class="p">]</span> <span class="o">=</span> <span class="n">low</span><span class="p">[</span><span class="n">mask_pix</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">upp_new</span><span class="p">[</span><span class="n">mask_pix</span><span class="p">]</span> <span class="o">=</span> <span class="n">upp</span><span class="p">[</span><span class="n">mask_pix</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">low</span> <span class="o">=</span> <span class="n">low_new</span>
+        <span class="n">upp</span> <span class="o">=</span> <span class="n">upp_new</span>
+
+        <span class="k">if</span> <span class="n">total_change</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">break</span>
+
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">mask_pix</span><span class="p">):</span>
+            <span class="k">break</span>
+
+        <span class="c1"># update only non-masked pixels</span>
+        <span class="n">nrej</span><span class="p">[</span><span class="o">~</span><span class="n">mask_pix</span><span class="p">]</span> <span class="o">=</span> <span class="n">n_change</span><span class="p">[</span><span class="o">~</span><span class="n">mask_pix</span><span class="p">]</span>
+        <span class="c1"># update only changed pixels</span>
+        <span class="n">nit</span><span class="p">[</span><span class="o">~</span><span class="n">mask_nochange</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">k</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">n_finite_old</span> <span class="o">=</span> <span class="n">n_finite_new</span>
+
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">mask_nan</span> <span class="o">|</span> <span class="p">(</span><span class="n">arr</span> <span class="o">&lt;</span> <span class="n">low_new</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">arr</span> <span class="o">&gt;</span> <span class="n">upp_new</span><span class="p">)</span>
+
+    <span class="n">code</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">_arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">maxiters</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+        <span class="n">code</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">code</span> <span class="o">+=</span> <span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">mask_nochange</span> <span class="o">+</span> <span class="mi">4</span><span class="o">*</span><span class="n">mask_nkeep</span>
+                 <span class="o">+</span> <span class="mi">8</span><span class="o">*</span><span class="n">mask_maxrej</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">irafmode</span><span class="p">:</span>
+        <span class="n">n_minimum</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">nkeep</span><span class="p">,</span> <span class="n">ncombine</span> <span class="o">-</span> <span class="n">maxrej</span><span class="p">)</span>
+        <span class="n">resid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">_arr</span> <span class="o">-</span> <span class="n">cen</span><span class="p">)</span>
+        <span class="c1"># need this cuz bn.argpartition cannot handle NaN:</span>
+        <span class="n">resid</span><span class="p">[</span><span class="n">mask_nan</span><span class="p">]</span> <span class="o">=</span> <span class="n">_get_dtype_limits</span><span class="p">(</span><span class="n">resid</span><span class="o">.</span><span class="n">dtype</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># max of dtype</span>
+        <span class="c1"># after this, resid is guaranteed to have **NO** NaN values.</span>
+
+        <span class="n">resid_cut</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span>
+            <span class="n">bn</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="n">resid</span><span class="p">,</span> <span class="n">n_minimum</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)[:</span><span class="n">n_minimum</span><span class="p">,</span> <span class="p">],</span>
+            <span class="n">axis</span><span class="o">=</span><span class="mi">0</span>
+        <span class="p">)</span>
+        <span class="n">mask</span><span class="p">[</span><span class="n">resid</span> <span class="o">&lt;=</span> <span class="n">resid_cut</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="c1"># Note the mask returned here is mask from rejection PROPAGATED with</span>
+    <span class="c1"># the input mask. So to extract the pixels masked PURELY from</span>
+    <span class="c1"># rejection, you need ``mask_output^mask_input`` because the input</span>
+    <span class="c1"># mask is a subset of the output one.</span>
+
+    <span class="k">return</span> <span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nit</span><span class="p">,</span> <span class="n">code</span><span class="p">)</span>
+
+
+<span class="c1"># TODO: let ``cenfunc`` be function object...?</span>
+<span class="c1"># *************************************************************************** #</span>
+<span class="c1"># *                               SIGMA-CLIPPING                            * #</span>
+<span class="c1"># *************************************************************************** #</span>
+<div class="viewcode-block" id="sigclip_mask"><a class="viewcode-back" href="../../api/reject.html#imcombinepy.reject.sigclip_mask">[docs]</a><span class="k">def</span> <span class="nf">sigclip_mask</span><span class="p">(</span>
+    <span class="n">arr</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">3.</span><span class="p">,</span> <span class="n">sigma_lower</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma_upper</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">maxiters</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+    <span class="n">ddof</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">nkeep</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">maxrej</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cenfunc</span><span class="o">=</span><span class="s1">&#39;median&#39;</span><span class="p">,</span> <span class="n">irafmode</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+    <span class="n">full</span><span class="o">=</span><span class="kc">True</span>
+<span class="p">):</span>
+    <span class="k">if</span> <span class="n">axis</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Currently only axis=0 is supported&quot;</span><span class="p">)</span>
+
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">_set_mask</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">mask</span><span class="p">)</span>
+    <span class="n">sigma_lower</span><span class="p">,</span> <span class="n">sigma_upper</span> <span class="o">=</span> <span class="n">_set_sigma</span><span class="p">(</span><span class="n">sigma</span><span class="p">,</span> <span class="n">sigma_lower</span><span class="p">,</span> <span class="n">sigma_upper</span><span class="p">)</span>
+    <span class="n">nkeep</span><span class="p">,</span> <span class="n">maxrej</span> <span class="o">=</span> <span class="n">_set_keeprej</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">nkeep</span><span class="p">,</span> <span class="n">maxrej</span><span class="p">,</span> <span class="n">axis</span><span class="p">)</span>
+    <span class="n">cenfunc</span> <span class="o">=</span> <span class="n">_set_cenfunc</span><span class="p">(</span><span class="n">cenfunc</span><span class="p">)</span>
+    <span class="n">maxiters</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">maxiters</span><span class="p">)</span>
+    <span class="n">ddof</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">ddof</span><span class="p">)</span>
+
+    <span class="n">o_mask</span><span class="p">,</span> <span class="n">o_low</span><span class="p">,</span> <span class="n">o_upp</span><span class="p">,</span> <span class="n">o_nit</span><span class="p">,</span> <span class="n">o_code</span> <span class="o">=</span> <span class="n">_iter_rej</span><span class="p">(</span>
+        <span class="n">arr</span><span class="o">=</span><span class="n">arr</span><span class="p">,</span>
+        <span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">,</span>
+        <span class="n">sigma_lower</span><span class="o">=</span><span class="n">sigma_lower</span><span class="p">,</span>
+        <span class="n">sigma_upper</span><span class="o">=</span><span class="n">sigma_upper</span><span class="p">,</span>
+        <span class="n">maxiters</span><span class="o">=</span><span class="n">maxiters</span><span class="p">,</span>
+        <span class="n">ddof</span><span class="o">=</span><span class="n">ddof</span><span class="p">,</span>
+        <span class="n">nkeep</span><span class="o">=</span><span class="n">nkeep</span><span class="p">,</span>
+        <span class="n">maxrej</span><span class="o">=</span><span class="n">maxrej</span><span class="p">,</span>
+        <span class="n">cenfunc</span><span class="o">=</span><span class="n">cenfunc</span><span class="p">,</span>
+        <span class="n">ccdclip</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">irafmode</span><span class="o">=</span><span class="n">irafmode</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">full</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">o_mask</span><span class="p">,</span> <span class="n">o_low</span><span class="p">,</span> <span class="n">o_upp</span><span class="p">,</span> <span class="n">o_nit</span><span class="p">,</span> <span class="n">o_code</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">o_mask</span></div>
+
+
+<span class="n">sigclip_mask</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="s1">&#39;&#39;&#39; Finds masks of ``arr`` by sigma-clipping.</span>
+
+<span class="s1">    Parameters</span>
+<span class="s1">    ----------</span>
+<span class="s1">    arr : ndarray</span>
+<span class="s1">        The array to be subjected for masking. ``arr`` and ``mask`` must</span>
+<span class="s1">        have the identical shape.</span>
+
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+
+<span class="s1">    Returns</span>
+<span class="s1">    -------</span>
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+
+<span class="s1">    &#39;&#39;&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">docstrings</span><span class="o">.</span><span class="n">REJECT_PARAMETERS_COMMON</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
+               <span class="n">docstrings</span><span class="o">.</span><span class="n">REJECT_RETURNS_COMMON</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">))</span>
+
+
+<span class="c1"># *************************************************************************** #</span>
+<span class="c1"># *                             MINMAX CLIPPING                             * #</span>
+<span class="c1"># *************************************************************************** #</span>
+<span class="k">def</span> <span class="nf">_minmax</span><span class="p">(</span>
+        <span class="n">arr</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">q_low</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">q_upp</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">cenfunc</span><span class="o">=</span><span class="s1">&#39;median&#39;</span>
+<span class="p">):</span>
+    <span class="c1"># General setup (nkeep and maxrej as dummy)</span>
+    <span class="n">_arr</span><span class="p">,</span> <span class="n">_masks</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">cenfunc</span><span class="p">,</span> <span class="n">_nvals</span><span class="p">,</span> <span class="n">lowupp</span> <span class="o">=</span> <span class="n">_setup_reject</span><span class="p">(</span>
+        <span class="n">arr</span><span class="o">=</span><span class="n">arr</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">,</span> <span class="n">nkeep</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">maxrej</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cenfunc</span><span class="o">=</span><span class="n">cenfunc</span>
+    <span class="p">)</span>
+    <span class="c1"># mask == input_mask | ~isfinite</span>
+    <span class="n">mask</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">mask_skiprej</span> <span class="o">=</span> <span class="n">_masks</span>  <span class="c1"># nkeep and maxrej not used in MINMAX.</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">ncombine</span><span class="p">,</span> <span class="n">n_old</span> <span class="o">=</span> <span class="n">_nvals</span>  <span class="c1"># nit is not used in MINMAX.</span>
+
+    <span class="c1"># adding 0.001 following IRAF</span>
+    <span class="n">n_rej_low</span> <span class="o">=</span> <span class="p">(</span><span class="n">n_old</span> <span class="o">*</span> <span class="n">q_low</span> <span class="o">+</span> <span class="mf">0.001</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">n_old</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">n_rej_upp</span> <span class="o">=</span> <span class="p">(</span><span class="n">n_old</span> <span class="o">*</span> <span class="n">q_upp</span> <span class="o">+</span> <span class="mf">0.001</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">n_old</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">n_low</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">n_rej_low</span><span class="p">)</span>  <span class="c1"># only ~ 0.1 ms for 1k x 1k array of int</span>
+    <span class="n">n_upp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">n_rej_upp</span><span class="p">)</span>
+
+    <span class="n">dmin</span><span class="p">,</span> <span class="n">dmax</span> <span class="o">=</span> <span class="n">_get_dtype_limits</span><span class="p">(</span><span class="n">_arr</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="c1"># remove lower values</span>
+    <span class="n">_arr</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">dmax</span>  <span class="c1"># replace with largest value</span>
+    <span class="n">low</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">bn</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="n">_arr</span><span class="p">,</span> <span class="n">kth</span><span class="o">=</span><span class="n">n_low</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)[:</span><span class="n">n_low</span><span class="p">,</span> <span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="c1"># remove upper values</span>
+    <span class="n">_arr</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">dmin</span>  <span class="c1"># replace with lowest values</span>
+    <span class="n">upp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="o">-</span><span class="n">bn</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="o">-</span><span class="n">_arr</span><span class="p">,</span> <span class="n">kth</span><span class="o">=</span><span class="n">n_upp</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)[:</span><span class="n">n_upp</span><span class="p">,</span> <span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="c1"># propagate with rejection mask</span>
+    <span class="n">mask</span> <span class="o">|=</span> <span class="p">(</span><span class="n">_arr</span> <span class="o">&lt;</span> <span class="n">low</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">upp</span> <span class="o">&lt;</span> <span class="n">_arr</span><span class="p">)</span>
+
+    <span class="n">code</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">_arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+    <span class="n">no_rej</span> <span class="o">=</span> <span class="p">(</span><span class="n">n_rej_low</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">n_rej_upp</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="c1"># code +=</span>
+
+    <span class="k">return</span> <span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nit</span><span class="p">,</span> <span class="n">code</span><span class="p">)</span>
+
+<span class="c1"># *************************************************************************** #</span>
+<span class="c1"># *                       PERCENTILE CLIPPING (PCLIP)                       * #</span>
+<span class="c1"># *************************************************************************** #</span>
+
+
+<span class="c1"># *************************************************************************** #</span>
+<span class="c1"># *                    CCD NOISE MODEL CLIPPING (CCDCLIP)                   * #</span>
+<span class="c1"># *************************************************************************** #</span>
+<div class="viewcode-block" id="ccdclip_mask"><a class="viewcode-back" href="../../api/reject.html#imcombinepy.reject.ccdclip_mask">[docs]</a><span class="k">def</span> <span class="nf">ccdclip_mask</span><span class="p">(</span>
+        <span class="n">arr</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">3.</span><span class="p">,</span> <span class="n">sigma_lower</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma_upper</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">scale_ref</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">zero_ref</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">maxiters</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">gain</span><span class="o">=</span><span class="mf">1.</span><span class="p">,</span> <span class="n">rdnoise</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span> <span class="n">snoise</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s1">&#39;float32&#39;</span><span class="p">,</span>
+        <span class="n">ddof</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">nkeep</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">maxrej</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cenfunc</span><span class="o">=</span><span class="s1">&#39;median&#39;</span><span class="p">,</span> <span class="n">irafmode</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">full</span><span class="o">=</span><span class="kc">True</span>
+<span class="p">):</span>
+    <span class="k">if</span> <span class="n">axis</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Currently only axis=0 is supported&quot;</span><span class="p">)</span>
+
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">_set_mask</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">mask</span><span class="p">)</span>
+    <span class="n">ncombine</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">sigma_lower</span><span class="p">,</span> <span class="n">sigma_upper</span> <span class="o">=</span> <span class="n">_set_sigma</span><span class="p">(</span><span class="n">sigma</span><span class="p">,</span> <span class="n">sigma_lower</span><span class="p">,</span> <span class="n">sigma_upper</span><span class="p">)</span>
+    <span class="n">nkeep</span><span class="p">,</span> <span class="n">maxrej</span> <span class="o">=</span> <span class="n">_set_keeprej</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">nkeep</span><span class="p">,</span> <span class="n">maxrej</span><span class="p">,</span> <span class="n">axis</span><span class="p">)</span>
+    <span class="n">cenfunc</span> <span class="o">=</span> <span class="n">_set_cenfunc</span><span class="p">(</span><span class="n">cenfunc</span><span class="p">)</span>
+    <span class="n">maxiters</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">maxiters</span><span class="p">)</span>
+    <span class="n">ddof</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">ddof</span><span class="p">)</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">gns</span> <span class="o">=</span> <span class="n">_set_gain_rdns</span><span class="p">(</span><span class="n">gain</span><span class="p">,</span> <span class="n">ncombine</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">rds</span> <span class="o">=</span> <span class="n">_set_gain_rdns</span><span class="p">(</span><span class="n">rdnoise</span><span class="p">,</span> <span class="n">ncombine</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">sns</span> <span class="o">=</span> <span class="n">_set_gain_rdns</span><span class="p">(</span><span class="n">snoise</span><span class="p">,</span> <span class="n">ncombine</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># Convert to gain-corrected</span>
+    <span class="n">arr</span> <span class="o">=</span> <span class="n">do_zs</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">zeros</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scales</span><span class="o">=</span><span class="mi">1</span><span class="o">/</span><span class="n">gns</span><span class="p">)</span>
+
+    <span class="n">o_mask</span><span class="p">,</span> <span class="n">o_low</span><span class="p">,</span> <span class="n">o_upp</span><span class="p">,</span> <span class="n">o_nit</span><span class="p">,</span> <span class="n">o_code</span> <span class="o">=</span> <span class="n">_iter_rej</span><span class="p">(</span>
+        <span class="n">arr</span><span class="o">=</span><span class="n">arr</span><span class="p">,</span>
+        <span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">,</span>
+        <span class="n">sigma_lower</span><span class="o">=</span><span class="n">sigma_lower</span><span class="p">,</span>
+        <span class="n">sigma_upper</span><span class="o">=</span><span class="n">sigma_upper</span><span class="p">,</span>
+        <span class="n">maxiters</span><span class="o">=</span><span class="n">maxiters</span><span class="p">,</span>
+        <span class="n">scale_ref</span><span class="o">=</span><span class="n">scale_ref</span><span class="p">,</span>
+        <span class="n">zero_ref</span><span class="o">=</span><span class="n">zero_ref</span><span class="p">,</span>
+        <span class="n">ddof</span><span class="o">=</span><span class="n">ddof</span><span class="p">,</span>
+        <span class="n">nkeep</span><span class="o">=</span><span class="n">nkeep</span><span class="p">,</span>
+        <span class="n">maxrej</span><span class="o">=</span><span class="n">maxrej</span><span class="p">,</span>
+        <span class="n">cenfunc</span><span class="o">=</span><span class="n">cenfunc</span><span class="p">,</span>
+        <span class="n">ccdclip</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">rdnoise_ref</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">rds</span><span class="p">),</span>  <span class="c1"># Use mean as the representative value</span>
+        <span class="n">snoise_ref</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">sns</span><span class="p">),</span>   <span class="c1"># Use mean as the representative value</span>
+        <span class="n">irafmode</span><span class="o">=</span><span class="n">irafmode</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">full</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">o_mask</span><span class="p">,</span> <span class="n">o_low</span><span class="p">,</span> <span class="n">o_upp</span><span class="p">,</span> <span class="n">o_nit</span><span class="p">,</span> <span class="n">o_code</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">o_mask</span></div>
+
+
+<span class="n">ccdclip_mask</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="s1">&#39;&#39;&#39; Finds masks of ``arr`` by CCD noise model.</span>
+
+<span class="s1">    Parameters</span>
+<span class="s1">    ----------</span>
+<span class="s1">    arr : ndarray</span>
+<span class="s1">        The array to be subjected for masking. ``arr`` and ``mask`` must</span>
+<span class="s1">        have the identical shape. It must be in DN, i.e., **not** gain</span>
+<span class="s1">        corrected.</span>
+
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+
+<span class="s1">    Returns</span>
+<span class="s1">    -------</span>
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+
+<span class="s1">    &#39;&#39;&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">docstrings</span><span class="o">.</span><span class="n">REJECT_PARAMETERS_COMMON</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
+               <span class="n">docstrings</span><span class="o">.</span><span class="n">REJECT_RETURNS_COMMON</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">))</span>
+</pre></div>
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><h3>Page Contents</h3>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+<footer class="footer">
+  <p class="pull-right"> &nbsp;
+    <a href="#">Back to Top</a></p>
+  <p>
+    &copy; Copyright 2020-2020, Yoonsoo P. Bach.<br/>
+    Created using <a href="http://www.sphinx-doc.org/en/stable/">Sphinx</a> 3.1.2. &nbsp;
+    Last built 2020-07-24 16:39:16 (GMT+09:00). <br/>
+  </p>
+</footer>
+  </body>
+</html>
