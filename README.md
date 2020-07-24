@@ -2,6 +2,15 @@
 
 A python package to replace IRAF imcombine with both python and CLI interface using bottleneck.
 
+## Installation
+
+```
+$ cd path/to/clone
+$ git clone https://github.com/ysBach/imcombinepy.git && cd imcombinepy $$ python setup.py install
+```
+
+# Usage
+
 Simplest use case:
 
 ```python
