@@ -26,7 +26,7 @@ res = imcombine(fpattern=fpattern,
                 scale="median_sc",
                 scale_kw=dict()
                 zero="avg",
-                reject='sc',
+                reject='ccd',
                 sigma=(2, 2),
                 verbose=True,
                 full=True,
