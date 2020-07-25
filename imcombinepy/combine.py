@@ -514,9 +514,6 @@ def ndcombine(
     maxiters = int(maxiters)
     ddof = int(ddof)
 
-    ndim = arr.ndim
-    ncombine = arr.shape[0]
-
     combfunc = _set_combfunc(combine, nameonly=False, nan=True)
 
     # == 01 - Thresholding + Initial masking ================================ #
