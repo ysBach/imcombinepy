@@ -412,8 +412,8 @@
     <span class="k">if</span> <span class="n">output</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">comb</span><span class="o">.</span><span class="n">writeto</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 
-    <span class="k">if</span> <span class="n">output_sigma</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">write2fits</span><span class="p">(</span><span class="n">std</span><span class="p">,</span> <span class="n">hdr0</span><span class="p">,</span> <span class="n">output_sigma</span><span class="p">,</span> <span class="n">return_hdu</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">output_std</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">write2fits</span><span class="p">(</span><span class="n">std</span><span class="p">,</span> <span class="n">hdr0</span><span class="p">,</span> <span class="n">output_std</span><span class="p">,</span> <span class="n">return_hdu</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">output_low</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">write2fits</span><span class="p">(</span><span class="n">low</span><span class="p">,</span> <span class="n">hdr0</span><span class="p">,</span> <span class="n">output_low</span><span class="p">,</span> <span class="n">return_hdu</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
@@ -441,7 +441,7 @@
         <span class="k">if</span> <span class="n">return_dict</span><span class="p">:</span>
             <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span>
                 <span class="n">comb</span><span class="o">=</span><span class="n">comb</span><span class="p">,</span>
-                <span class="n">std</span><span class="o">=</span><span class="n">sigma</span><span class="p">,</span>
+                <span class="n">std</span><span class="o">=</span><span class="n">std</span><span class="p">,</span>
                 <span class="n">mask_total</span><span class="o">=</span><span class="n">mask_total</span><span class="p">,</span>
                 <span class="n">mask_rej</span><span class="o">=</span><span class="n">mask_rej</span><span class="p">,</span>
                 <span class="n">mask_thresh</span><span class="o">=</span><span class="n">mask_thresh</span><span class="p">,</span>
@@ -758,7 +758,7 @@
   <p>
     &copy; Copyright 2020-2020, Yoonsoo P. Bach.<br/>
     Created using <a href="http://www.sphinx-doc.org/en/stable/">Sphinx</a> 3.1.2. &nbsp;
-    Last built 2020-07-25 18:05:13 (GMT+09:00). <br/>
+    Last built 2020-07-25 18:07:00 (GMT+09:00). <br/>
   </p>
 </footer>
   </body>

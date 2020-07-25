@@ -382,7 +382,7 @@ the rejection algorithm (see <code class="docutils literal notranslate"><span cl
 <dt>Returns the followings depending on <code class="docutils literal notranslate"><span class="pre">full</span></code> and <code class="docutils literal notranslate"><span class="pre">return_dict</span></code>.</dt><dd></dd>
 <dt><strong>comb</strong><span class="classifier"><a class="reference external" href="https://docs.astropy.org/en/stable/io/fits/api/hdus.html#astropy.io.fits.PrimaryHDU" title="(in Astropy v4.0.1)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">astropy.io.fits.PrimaryHDU</span></code></a> (dtype <code class="docutils literal notranslate"><span class="pre">dtype</span></code>)</span></dt><dd><p>The combined FITS file.</p>
 </dd>
-<dt><strong>err</strong><span class="classifier">ndarray</span></dt><dd><p>The sigma (error) map.</p>
+<dt><strong>std</strong><span class="classifier">ndarray</span></dt><dd><p>The standard deviation map of the survived pixels (with <code class="docutils literal notranslate"><span class="pre">ddof</span></code>).</p>
 </dd>
 <dt><strong>mask_total</strong><span class="classifier">ndarray (dtype bool)</span></dt><dd><p>The full mask, <code class="docutils literal notranslate"><span class="pre">N+1</span></code>-D. Identical to original FITS files’
 masks propagated with <code class="docutils literal notranslate"><span class="pre">|</span> <span class="pre">mask_rej</span> <span class="pre">|</span> <span class="pre">mask_thresh</span></code> below. The
@@ -645,7 +645,7 @@ the future.</p>
 <dd class="field-even"><dl>
 <dt><strong>comb</strong><span class="classifier">ndarray</span></dt><dd><p>The combined array.</p>
 </dd>
-<dt><strong>err</strong><span class="classifier">ndarray</span></dt><dd><p>The sigma (error) map.</p>
+<dt><strong>std</strong><span class="classifier">ndarray</span></dt><dd><p>The standard deviation map of the survived pixels (with <code class="docutils literal notranslate"><span class="pre">ddof</span></code>).</p>
 </dd>
 <dt><strong>mask_total</strong><span class="classifier">ndarray (dtype bool)</span></dt><dd><p>The full mask, <code class="docutils literal notranslate"><span class="pre">N+1</span></code>-D. Identical to original FITS files’
 masks propagated with <code class="docutils literal notranslate"><span class="pre">|</span> <span class="pre">mask_rej</span> <span class="pre">|</span> <span class="pre">mask_thresh</span></code> below. The
@@ -705,7 +705,7 @@ docstring.</p>
   <p>
     &copy; Copyright 2020-2020, Yoonsoo P. Bach.<br/>
     Created using <a href="http://www.sphinx-doc.org/en/stable/">Sphinx</a> 3.1.2. &nbsp;
-    Last built 2020-07-25 18:05:13 (GMT+09:00). <br/>
+    Last built 2020-07-25 18:07:00 (GMT+09:00). <br/>
   </p>
 </footer>
   </body>
