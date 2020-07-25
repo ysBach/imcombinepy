@@ -58,7 +58,7 @@ res = imc.fitscombine(
     output_mask="test_mask.fits",
     output_low="test_low.fits",
     output_upp="test_upp.fits",
-    output_sigma="test_sigma.fits",
+    output_std="test_sigma.fits",
     output_rejcode="test_rejcode.fits",
     overwrite=True,
     memlimit=4.e+9
@@ -85,7 +85,7 @@ comb, sigma, mask_total, mask_rej, mask_thresh, low, upp, nit, rejcode = res
 | rejection algorithm: extrema                         | X              | O           | X               |                                                              |
 | rejection algorithm: minmax                          | O              | O           | X               |                                                              |
 | rejection algorithm: pclip                           | O              | X           | X               |                                                              |
-| output rejection: sigma, bounds, nrej, mask          | O              | X           | O               |                                                              |
+| output rejection: std, bounds (low, upp), nrej, mask | O              | X           | O               |                                                              |
 | output: rejection flag                               | X              | X           | O               |                                                              |
 
 
