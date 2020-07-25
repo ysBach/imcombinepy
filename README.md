@@ -85,6 +85,8 @@ comb, sigma, mask_total, mask_rej, mask_thresh, low, upp, nit, rejcode = res
 | rejection algorithm: extrema                         | X              | O           | X               |                                                              |
 | rejection algorithm: minmax                          | O              | O           | X               |                                                              |
 | rejection algorithm: pclip                           | O              | X           | X               |                                                              |
+| output rejection: sigma, bounds, nrej, mask          | O              | X           | O               |                                                              |
+| output: rejection flag                               | X              | X           | O               |                                                              |
 
 
 
