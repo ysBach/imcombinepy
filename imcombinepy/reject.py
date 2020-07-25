@@ -43,8 +43,8 @@ def _iter_rej(
     k = 0
     # mask_pix is where **NO** rejection should occur.
     while k < maxiters:
+        cen = cenfunc(_arr, axis=0)
         if ccdclip:
-            cen = cenfunc(_arr, axis=0)
             # use absolute of cen to avoid NaN from negative pixels.
             std = np.sqrt(
                 np.abs((1 + snoise_ref)
@@ -52,7 +52,6 @@ def _iter_rej(
                        * scale_ref)  # restore zeroing & scaling
                 + rdnoise_ref**2)
         else:
-            cen = cenfunc(_arr, axis=0)
             std = bn.nanstd(_arr, axis=0, ddof=ddof)
         low_new[~mask_pix] = (cen - sigma_lower*std)[~mask_pix]
         upp_new[~mask_pix] = (cen + sigma_upper*std)[~mask_pix]
@@ -110,9 +109,13 @@ def _iter_rej(
 
     if irafmode:
         n_minimum = max(nkeep, ncombine - maxrej)
-        resid = np.abs(_arr - cen)
+        try:
+            resid = np.abs(_arr - cen)
+        except UnboundLocalError:  # cen undefined when maxiters=0
+            resid = np.abs(_arr - cenfunc(_arr, axis=0))
         # need this cuz bn.argpartition cannot handle NaN:
-        resid[mask_nan] = _get_dtype_limits(resid.dtype)[1]  # max of dtype
+        resid[np.isnan(resid)] = _get_dtype_limits(resid.dtype)[1]
+        # ^ replace with max of dtype
         # after this, resid is guaranteed to have **NO** NaN values.
 
         resid_cut = np.max(
