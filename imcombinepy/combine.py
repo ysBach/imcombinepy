@@ -147,8 +147,7 @@ def fitscombine(
     # iterate over files
     for i, fpath in enumerate(fpaths):
         fpath = Path(fpath)
-        hdul = fits.open(fpath, ext=ext)
-        hdr = hdul[ext].header
+        hdr = fits.getheader(fpath, ext=ext)
         if imcmb_key != '':
             if imcmb_key == "$I":
                 imcmb_val.append(fpath.name)
@@ -194,7 +193,9 @@ def fitscombine(
 
         # NOTE: the indexing in python is [z, y, x] order!!
         sizes[i, ] = [int(hdr[f'NAXIS{i}']) for i in range(ndim, 0, -1)]
-    # ----------------------------------------------------------------------- #
+
+        del hdr
+        # ------------------------------------------------------------------- #
 
     # == Check the size of the temporary array for combination ============== #
     offsets, sh_comb = _get_combine_shape(sizes, offsets)
@@ -277,7 +278,7 @@ def fitscombine(
             arr_full[slices] = _data
             mask_full[slices] = _mask
 
-            del hdul[ext].data
+            del hdul[ext].data, _data
 
     if verbose:
         print("All FITS loaded, rejection & combination starts", end='... ')
@@ -340,7 +341,7 @@ def fitscombine(
 
     update_hdr(hdr0, ncombine, imcmb_key=imcmb_key, imcmb_val=imcmb_val,
                offset_mode=offset_mode, offsets=offsets)
-    comb = fits.PrimaryHDU(data=comb, header=hdr0)
+    comb = fits.HDUList(fits.PrimaryHDU(data=comb, header=hdr0))
 
     # == Save FITS files ==================================================== #
     if output is not None:
@@ -369,6 +370,10 @@ def fitscombine(
 
     if verbose:
         print("Done.")
+
+    # == Return memroy... =================================================== #
+    # What am I missing here?
+    del hdr0
 
     # == Return ============================================================= #
     if full:
