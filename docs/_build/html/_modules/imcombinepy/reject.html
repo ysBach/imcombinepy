@@ -109,8 +109,8 @@
     <span class="n">k</span> <span class="o">=</span> <span class="mi">0</span>
     <span class="c1"># mask_pix is where **NO** rejection should occur.</span>
     <span class="k">while</span> <span class="n">k</span> <span class="o">&lt;</span> <span class="n">maxiters</span><span class="p">:</span>
+        <span class="n">cen</span> <span class="o">=</span> <span class="n">cenfunc</span><span class="p">(</span><span class="n">_arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">ccdclip</span><span class="p">:</span>
-            <span class="n">cen</span> <span class="o">=</span> <span class="n">cenfunc</span><span class="p">(</span><span class="n">_arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
             <span class="c1"># use absolute of cen to avoid NaN from negative pixels.</span>
             <span class="n">std</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span>
                 <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">((</span><span class="mi">1</span> <span class="o">+</span> <span class="n">snoise_ref</span><span class="p">)</span>
@@ -118,7 +118,6 @@
                        <span class="o">*</span> <span class="n">scale_ref</span><span class="p">)</span>  <span class="c1"># restore zeroing &amp; scaling</span>
                 <span class="o">+</span> <span class="n">rdnoise_ref</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">cen</span> <span class="o">=</span> <span class="n">cenfunc</span><span class="p">(</span><span class="n">_arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
             <span class="n">std</span> <span class="o">=</span> <span class="n">bn</span><span class="o">.</span><span class="n">nanstd</span><span class="p">(</span><span class="n">_arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="n">ddof</span><span class="p">)</span>
         <span class="n">low_new</span><span class="p">[</span><span class="o">~</span><span class="n">mask_pix</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">cen</span> <span class="o">-</span> <span class="n">sigma_lower</span><span class="o">*</span><span class="n">std</span><span class="p">)[</span><span class="o">~</span><span class="n">mask_pix</span><span class="p">]</span>
         <span class="n">upp_new</span><span class="p">[</span><span class="o">~</span><span class="n">mask_pix</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">cen</span> <span class="o">+</span> <span class="n">sigma_upper</span><span class="o">*</span><span class="n">std</span><span class="p">)[</span><span class="o">~</span><span class="n">mask_pix</span><span class="p">]</span>
@@ -176,9 +175,13 @@
 
     <span class="k">if</span> <span class="n">irafmode</span><span class="p">:</span>
         <span class="n">n_minimum</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">nkeep</span><span class="p">,</span> <span class="n">ncombine</span> <span class="o">-</span> <span class="n">maxrej</span><span class="p">)</span>
-        <span class="n">resid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">_arr</span> <span class="o">-</span> <span class="n">cen</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">resid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">_arr</span> <span class="o">-</span> <span class="n">cen</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">UnboundLocalError</span><span class="p">:</span>  <span class="c1"># cen undefined when maxiters=0</span>
+            <span class="n">resid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">_arr</span> <span class="o">-</span> <span class="n">cenfunc</span><span class="p">(</span><span class="n">_arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
         <span class="c1"># need this cuz bn.argpartition cannot handle NaN:</span>
-        <span class="n">resid</span><span class="p">[</span><span class="n">mask_nan</span><span class="p">]</span> <span class="o">=</span> <span class="n">_get_dtype_limits</span><span class="p">(</span><span class="n">resid</span><span class="o">.</span><span class="n">dtype</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># max of dtype</span>
+        <span class="n">resid</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">resid</span><span class="p">)]</span> <span class="o">=</span> <span class="n">_get_dtype_limits</span><span class="p">(</span><span class="n">resid</span><span class="o">.</span><span class="n">dtype</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="c1"># ^ replace with max of dtype</span>
         <span class="c1"># after this, resid is guaranteed to have **NO** NaN values.</span>
 
         <span class="n">resid_cut</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span>
@@ -380,7 +383,7 @@
   <p>
     &copy; Copyright 2020-2020, Yoonsoo P. Bach.<br/>
     Created using <a href="http://www.sphinx-doc.org/en/stable/">Sphinx</a> 3.1.2. &nbsp;
-    Last built 2020-07-24 16:39:16 (GMT+09:00). <br/>
+    Last built 2020-07-25 18:05:13 (GMT+09:00). <br/>
   </p>
 </footer>
   </body>

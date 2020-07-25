@@ -134,7 +134,7 @@
         <span class="n">imcmb_key</span><span class="o">=</span><span class="s1">&#39;$I&#39;</span><span class="p">,</span>
         <span class="n">exposure_key</span><span class="o">=</span><span class="s2">&quot;EXPTIME&quot;</span><span class="p">,</span>
         <span class="n">output</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_mask</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_nrej</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-        <span class="n">output_sigma</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_low</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_upp</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">output_std</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_low</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_upp</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">output_rejcode</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">return_dict</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
         <span class="o">**</span><span class="n">kwargs</span>
 <span class="p">):</span>
@@ -350,7 +350,7 @@
     <span class="c1"># ----------------------------------------------------------------------- #</span>
 
     <span class="c1"># == Combine with rejection! ============================================ #</span>
-    <span class="n">comb</span><span class="p">,</span> <span class="n">sigma</span><span class="p">,</span> <span class="n">mask_rej</span><span class="p">,</span> <span class="n">mask_thresh</span><span class="p">,</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nit</span><span class="p">,</span> <span class="n">rejcode</span> <span class="o">=</span> <span class="n">ndcombine</span><span class="p">(</span>
+    <span class="n">comb</span><span class="p">,</span> <span class="n">std</span><span class="p">,</span> <span class="n">mask_rej</span><span class="p">,</span> <span class="n">mask_thresh</span><span class="p">,</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nit</span><span class="p">,</span> <span class="n">rejcode</span> <span class="o">=</span> <span class="n">ndcombine</span><span class="p">(</span>
         <span class="n">arr</span><span class="o">=</span><span class="n">arr_full</span><span class="p">,</span>
         <span class="n">mask</span><span class="o">=</span><span class="n">mask_full</span><span class="p">,</span>
         <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>  <span class="c1"># No need to retain arr_full.</span>
@@ -380,7 +380,7 @@
         <span class="n">full</span><span class="o">=</span><span class="kc">True</span>
     <span class="p">)</span>
     <span class="n">comb</span> <span class="o">=</span> <span class="n">comb</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
-    <span class="n">sigma</span> <span class="o">=</span> <span class="n">sigma</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">std</span> <span class="o">=</span> <span class="n">std</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
     <span class="n">low</span> <span class="o">=</span> <span class="n">low</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
     <span class="n">upp</span> <span class="o">=</span> <span class="n">upp</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
     <span class="c1"># ----------------------------------------------------------------------- #</span>
@@ -413,7 +413,7 @@
         <span class="n">comb</span><span class="o">.</span><span class="n">writeto</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">output_sigma</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">write2fits</span><span class="p">(</span><span class="n">sigma</span><span class="p">,</span> <span class="n">hdr0</span><span class="p">,</span> <span class="n">output_sigma</span><span class="p">,</span> <span class="n">return_hdu</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">write2fits</span><span class="p">(</span><span class="n">std</span><span class="p">,</span> <span class="n">hdr0</span><span class="p">,</span> <span class="n">output_sigma</span><span class="p">,</span> <span class="n">return_hdu</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">output_low</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">write2fits</span><span class="p">(</span><span class="n">low</span><span class="p">,</span> <span class="n">hdr0</span><span class="p">,</span> <span class="n">output_low</span><span class="p">,</span> <span class="n">return_hdu</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
@@ -441,7 +441,7 @@
         <span class="k">if</span> <span class="n">return_dict</span><span class="p">:</span>
             <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span>
                 <span class="n">comb</span><span class="o">=</span><span class="n">comb</span><span class="p">,</span>
-                <span class="n">sigma</span><span class="o">=</span><span class="n">sigma</span><span class="p">,</span>
+                <span class="n">std</span><span class="o">=</span><span class="n">sigma</span><span class="p">,</span>
                 <span class="n">mask_total</span><span class="o">=</span><span class="n">mask_total</span><span class="p">,</span>
                 <span class="n">mask_rej</span><span class="o">=</span><span class="n">mask_rej</span><span class="p">,</span>
                 <span class="n">mask_thresh</span><span class="o">=</span><span class="n">mask_thresh</span><span class="p">,</span>
@@ -580,9 +580,6 @@
     <span class="n">maxiters</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">maxiters</span><span class="p">)</span>
     <span class="n">ddof</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">ddof</span><span class="p">)</span>
 
-    <span class="n">ndim</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span>
-    <span class="n">ncombine</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-
     <span class="n">combfunc</span> <span class="o">=</span> <span class="n">_set_combfunc</span><span class="p">(</span><span class="n">combine</span><span class="p">,</span> <span class="n">nameonly</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">nan</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
     <span class="c1"># == 01 - Thresholding + Initial masking ================================ #</span>
@@ -692,14 +689,14 @@
     <span class="c1"># Combine and calc sigma</span>
     <span class="n">comb</span> <span class="o">=</span> <span class="n">combfunc</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">full</span><span class="p">:</span>
-        <span class="n">sigma</span> <span class="o">=</span> <span class="n">bn</span><span class="o">.</span><span class="n">nanstd</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">std</span> <span class="o">=</span> <span class="n">bn</span><span class="o">.</span><span class="n">nanstd</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="n">ddof</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 
     <span class="c1"># Restore NaN-replaced pixels of arr for debugging purpose.</span>
     <span class="c1"># arr[_mask] = backup_nan</span>
     <span class="c1"># arr[mask_thresh] = backup_thresh_inmask</span>
 
     <span class="k">if</span> <span class="n">full</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">comb</span><span class="p">,</span> <span class="n">sigma</span><span class="p">,</span> <span class="n">mask_rej</span><span class="p">,</span> <span class="n">mask_thresh</span><span class="p">,</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nit</span><span class="p">,</span> <span class="n">rejcode</span>
+        <span class="k">return</span> <span class="n">comb</span><span class="p">,</span> <span class="n">std</span><span class="p">,</span> <span class="n">mask_rej</span><span class="p">,</span> <span class="n">mask_thresh</span><span class="p">,</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nit</span><span class="p">,</span> <span class="n">rejcode</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">comb</span></div>
 
@@ -761,7 +758,7 @@
   <p>
     &copy; Copyright 2020-2020, Yoonsoo P. Bach.<br/>
     Created using <a href="http://www.sphinx-doc.org/en/stable/">Sphinx</a> 3.1.2. &nbsp;
-    Last built 2020-07-24 16:39:16 (GMT+09:00). <br/>
+    Last built 2020-07-25 18:05:13 (GMT+09:00). <br/>
   </p>
 </footer>
   </body>
