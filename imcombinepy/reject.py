@@ -274,6 +274,10 @@ def ccdclip_mask(
         snoise_ref=np.mean(sns),   # Use mean as the representative value
         irafmode=irafmode
     )
+
+    # Revert to ADU (DN)
+    arr = do_zs(arr, zeros=None, scales=gns)
+
     if full:
         return o_mask, o_low, o_upp, o_nit, o_code
     else:
