@@ -68,7 +68,7 @@ def fitscombine(
         imcmb_key='$I',
         exposure_key="EXPTIME",
         output=None, output_mask=None, output_nrej=None,
-        output_sigma=None, output_low=None, output_upp=None,
+        output_std=None, output_low=None, output_upp=None,
         output_rejcode=None, return_dict=False,
         **kwargs
 ):
@@ -284,7 +284,7 @@ def fitscombine(
     # ----------------------------------------------------------------------- #
 
     # == Combine with rejection! ============================================ #
-    comb, sigma, mask_rej, mask_thresh, low, upp, nit, rejcode = ndcombine(
+    comb, std, mask_rej, mask_thresh, low, upp, nit, rejcode = ndcombine(
         arr=arr_full,
         mask=mask_full,
         copy=False,  # No need to retain arr_full.
@@ -314,7 +314,7 @@ def fitscombine(
         full=True
     )
     comb = comb.astype(dtype)
-    sigma = sigma.astype(dtype)
+    std = std.astype(dtype)
     low = low.astype(dtype)
     upp = upp.astype(dtype)
     # ----------------------------------------------------------------------- #
@@ -346,8 +346,8 @@ def fitscombine(
     if output is not None:
         comb.writeto(output, **kwargs)
 
-    if output_sigma is not None:
-        write2fits(sigma, hdr0, output_sigma, return_hdu=False, **kwargs)
+    if output_std is not None:
+        write2fits(std, hdr0, output_std, return_hdu=False, **kwargs)
 
     if output_low is not None:
         write2fits(low, hdr0, output_low, return_hdu=False, **kwargs)
@@ -375,7 +375,7 @@ def fitscombine(
         if return_dict:
             return dict(
                 comb=comb,
-                sigma=sigma,
+                std=std,
                 mask_total=mask_total,
                 mask_rej=mask_rej,
                 mask_thresh=mask_thresh,
@@ -623,14 +623,14 @@ def ndcombine(
     # Combine and calc sigma
     comb = combfunc(arr, axis=0)
     if full:
-        sigma = bn.nanstd(arr, axis=0)
+        std = bn.nanstd(arr, ddof=ddof, axis=0)
 
     # Restore NaN-replaced pixels of arr for debugging purpose.
     # arr[_mask] = backup_nan
     # arr[mask_thresh] = backup_thresh_inmask
 
     if full:
-        return comb, sigma, mask_rej, mask_thresh, low, upp, nit, rejcode
+        return comb, std, mask_rej, mask_thresh, low, upp, nit, rejcode
     else:
         return comb
 

@@ -314,8 +314,8 @@ combine: str, optional.
 
 def NDCOMB_RETURNS_COMMON(indent=0):
     return _fix("""
-sigma : ndarray
-        The sigma map.
+std : ndarray
+    The standard deviation map of the survived pixels (with ``ddof``).
 
 mask_total : ndarray (dtype bool)
     The full mask, ``N+1``-D. Identical to original FITS files'
