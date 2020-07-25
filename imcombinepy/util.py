@@ -202,6 +202,7 @@ def write2fits(data, header, output, return_hdu=False, **kwargs):
         print("Try using output_verify='fix' to avoid this error.")
     if return_hdu:
         return hdu
+    del hdu
 
 
 def update_hdr(header, ncombine, imcmb_key, imcmb_val,
