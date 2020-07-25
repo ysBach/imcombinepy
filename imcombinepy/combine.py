@@ -385,7 +385,7 @@ def fitscombine(
                 rejcode=rejcode
             )
         else:
-            return (comb, sigma, mask_total, mask_rej, mask_thresh,
+            return (comb, std, mask_total, mask_rej, mask_thresh,
                     low, upp, nit, rejcode)
     else:
         return comb
