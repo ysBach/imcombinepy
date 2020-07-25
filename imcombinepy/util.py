@@ -326,14 +326,14 @@ def _set_keeprej(arr, nkeep, maxrej, axis):
     if nkeep is None:
         nkeep = 0
     elif nkeep < 1:
-        nkeep = int(np.around(nkeep*arr.shape[axis]))
+        nkeep = np.around(nkeep*arr.shape[axis])
 
     if maxrej is None:
-        maxrej = int(arr.shape[axis])
+        maxrej = arr.shape[axis]
     elif maxrej < 1:
-        maxrej = int(np.around(maxrej*arr.shape[axis]))
+        maxrej = np.around(maxrej*arr.shape[axis])
 
-    return nkeep, maxrej
+    return int(nkeep), int(maxrej)
 
 
 def _set_minmax(arr, n_minmax, axis):
