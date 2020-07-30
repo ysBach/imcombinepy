@@ -2,6 +2,10 @@
 
 A python package to replace IRAF imcombine with both python and CLI interface using bottleneck.
 
+[Online documentation here](http://htmlpreview.github.io/?https://github.com/ysBach/imcombinepy/blob/master/docs/_build/html/index.html)
+
+* **NOTE**: Sorry but the online documentations from *readthdocs* is not available at the moment.
+
 ## Installation
 
 ```
