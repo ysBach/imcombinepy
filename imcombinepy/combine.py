@@ -4,12 +4,13 @@ import bottleneck as bn
 import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
+from astropy.nddata import CCDData
 
 from .reject import sigclip_mask, ccdclip_mask
 from .util import (_get_combine_shape, _set_cenfunc, _set_combfunc,
                    _set_gain_rdns, _set_int_dtype, _set_keeprej, _set_mask,
                    _set_reject_name, _set_sigma, _set_thresh_mask, do_zs,
-                   filelist, get_zsw, update_hdr, write2fits)
+                   filelist, get_zsw, update_hdr, write2fits, load_ccd)
 from . import docstrings
 
 __all__ = ["fitscombine", "ndcombine"]
@@ -51,7 +52,7 @@ def fitscombine(
         zero_kw={'cenfunc': 'median', 'stdfunc': 'std', 'std_ddof': 1},
         scale_kw={'cenfunc': 'median', 'stdfunc': 'std', 'std_ddof': 1},
         zero_to_0th=True, scale_to_0th=True,
-        scale_sample=None, zero_sample=None,
+        zero_section=None, scale_section=None,
         reject=None,
         cenfunc='median',
         sigma=[3., 3.], maxiters=50, ddof=1, nkeep=1, maxrej=None,
@@ -240,6 +241,14 @@ def fitscombine(
     for i, (_fpath, _offset, _size) in enumerate(zip(fpaths,
                                                      offsets,
                                                      sizes)):
+        # import os
+        # import psutil
+        # import sys
+        # import gc
+
+        # process = psutil.Process(os.getpid())
+        # print("0: ", process.memory_info().rss/1.e+9)  # in bytes
+
         # -- Set slice ------------------------------------------------------ #
         slices = [i]
         # offset & size at each j-th dimension axis
@@ -247,41 +256,67 @@ def fitscombine(
             slices.append(slice(offset_j, offset_j + size_j, None))
 
         # -- Set mask ------------------------------------------------------- #
-        with fits.open(_fpath) as hdul:
-            _data = hdul[ext].data
-            try:  # load MASK from FITS file if exists
-                _mask = hdul["MASK"].data.astype('bool')
-            except KeyError:
-                _mask = np.zeros(hdul[ext].data.shape, dtype=bool)
+        # process = psutil.Process(os.getpid())
+        # print("1: ", process.memory_info().rss/1.e+9)  # in bytes
 
-            if mask is not None:
-                _mask |= mask[i, ]
+        ccd = load_ccd(_fpath, extension=ext, memmap=False)
+        _data = ccd.data
 
-            # -- zero and scale --------------------------------------------- #
-            # better to calculate here than from full array, as the
-            # latter may contain too many NaNs due to offest shifting.
-            _z, _s, _w = get_zsw(
-                arr=_data[None, :],  # make a fake (N+1)-D array
-                zero=zero,
-                scale=scale,
-                weight=weight,
-                zero_kw=zero_kw,
-                scale_kw=scale_kw,
-                zero_to_0th=False,  # to retain original zero
-                scale_to_0th=False  # to retain original scale
-            )
-            zeros[i] = _z[0]
-            scales[i] = _s[0]
-            weights[i] = _w[0]
+        # process = psutil.Process(os.getpid())
+        # print("1-1: ", process.memory_info().rss/1.e+9)  # in bytes
+        _mask = ccd.mask
+        # process = psutil.Process(os.getpid())
+        # print("1-2: ", process.memory_info().rss/1.e+9)  # in bytes
 
-            # -- Insertion -------------------------------------------------- #
-            arr_full[slices] = _data
-            mask_full[slices] = _mask
+        if _mask is None:
+            _mask = np.zeros(_data.shape, dtype=bool)
+        # process = psutil.Process(os.getpid())
+        # print("1-3: ", process.memory_info().rss/1.e+9)  # in bytes
 
-            del hdul[ext].data, _data
+        if mask is not None:
+            _mask |= mask[i, ]
+
+        # process = psutil.Process(os.getpid())
+        # print("2: ", process.memory_info().rss/1.e+9)  # in bytes
+        # local_vars = list(locals().items())
+        # for var, obj in local_vars:
+        #     print(var, sys.getsizeof(obj))
+
+        # -- zero and scale --------------------------------------------- #
+        # better to calculate here than from full array, as the
+        # latter may contain too many NaNs due to offest shifting.
+        # TODO: let get_zsw to get functionals for zsw, so _set_calc_zsw
+        # will not be repeateded for every iteration.
+        _data_fake = np.array(_data[None, :])  # make a fake (N+1)-D array
+        _z, _s, _w = get_zsw(
+            arr=_data_fake,
+            zero=zero,
+            scale=scale,
+            weight=weight,
+            zero_kw=zero_kw,
+            scale_kw=scale_kw,
+            zero_to_0th=False,   # to retain original zero
+            scale_to_0th=False,  # to retain original scale
+            zero_section=zero_section,
+            scale_section=scale_section
+        )
+        zeros[i] = _z[0]
+        scales[i] = _s[0]
+        weights[i] = _w[0]
+
+        # -- Insertion -------------------------------------------------- #
+        arr_full[slices] = _data
+        mask_full[slices] = _mask
+
+        # process = psutil.Process(os.getpid())
+        # print("3: ", process.memory_info().rss/1.e+9)  # in bytes
+        del ccd, _data, _mask, _data_fake
+        # process = psutil.Process(os.getpid())
+        # print("4: ", process.memory_info().rss/1.e+9)  # in bytes
 
     if verbose:
         print("All FITS loaded, rejection & combination starts", end='... ')
+
     # ----------------------------------------------------------------------- #
 
     # == Combine with rejection! ============================================ #
@@ -298,7 +333,6 @@ def fitscombine(
         scale_to_0th=scale_to_0th,
         scale_kw=scale_kw,
         zero_kw=zero_kw,
-        statsec=statsec,
         thresholds=thresholds,
         n_minmax=n_minmax,
         nkeep=nkeep,
@@ -341,39 +375,44 @@ def fitscombine(
 
     update_hdr(hdr0, ncombine, imcmb_key=imcmb_key, imcmb_val=imcmb_val,
                offset_mode=offset_mode, offsets=offsets)
-    comb = fits.HDUList(fits.PrimaryHDU(data=comb, header=hdr0))
+
+    try:
+        unit = hdr0["BUNIT"]
+    except (KeyError, IndexError):
+        unit = 'adu'
+
+    comb = CCDData(data=comb, header=hdr0, unit=unit)
 
     # == Save FITS files ==================================================== #
     if output is not None:
         comb.writeto(output, **kwargs)
 
     if output_std is not None:
-        write2fits(std, hdr0, output_std, return_hdu=False, **kwargs)
+        write2fits(std, hdr0, output_std, return_ccd=False, **kwargs)
 
     if output_low is not None:
-        write2fits(low, hdr0, output_low, return_hdu=False, **kwargs)
+        write2fits(low, hdr0, output_low, return_ccd=False, **kwargs)
 
     if output_upp is not None:
-        write2fits(upp, hdr0, output_upp, return_hdu=False, **kwargs)
+        write2fits(upp, hdr0, output_upp, return_ccd=False, **kwargs)
 
     if output_nrej is not None:  # Do this BEFORE output_mask!!
         nrej = np.count_nonzero(mask_total, axis=0).astype(int_dtype)
-        write2fits(nrej, hdr0, output_nrej, return_hdu=False, **kwargs)
+        write2fits(nrej, hdr0, output_nrej, return_ccd=False, **kwargs)
 
     if output_mask is not None:  # Do this AFTER output_nrej!!
         # FITS does not accept boolean. We need uint8.
         write2fits(mask_total.astype(np.uint8), hdr0, output_mask,
-                   return_hdu=False, **kwargs)
+                   return_ccd=False, **kwargs)
 
     if output_rejcode is not None:
-        write2fits(rejcode, hdr0, output_rejcode, return_hdu=False, **kwargs)
+        write2fits(rejcode, hdr0, output_rejcode, return_ccd=False, **kwargs)
 
     if verbose:
         print("Done.")
 
     # == Return memroy... =================================================== #
-    # What am I missing here?
-    del hdr0
+    del hdr0, arr_full, mask_full
 
     # == Return ============================================================= #
     if full:
@@ -468,8 +507,8 @@ fitscombine.__doc__ = '''A helper function for ndcombine to cope with FITS files
     -------
     Returns the followings depending on ``full`` and ``return_dict``.
 
-    comb : `astropy.io.fits.PrimaryHDU` (dtype ``dtype``)
-        The combined FITS file.
+    comb : `astropy.nddata.CCDData` (dtype ``dtype``)
+        The combined data.
 
     {}
 
@@ -487,11 +526,11 @@ def ndcombine(
         blank=np.nan,
         offsets=None,
         thresholds=[-np.inf, np.inf],
-        zero=None, scale=None, weight=None, statsec=None,
+        zero=None, scale=None, weight=None,
         zero_kw={'cenfunc': 'median', 'stdfunc': 'std', 'std_ddof': 1},
         scale_kw={'cenfunc': 'median', 'stdfunc': 'std', 'std_ddof': 1},
         zero_to_0th=True, scale_to_0th=True,
-        scale_sample=None, zero_sample=None,
+        zero_section=None, scale_section=None,
         reject=None,
         cenfunc='median',
         sigma=[3., 3.], maxiters=3, ddof=1, nkeep=1, maxrej=None,
@@ -550,7 +589,9 @@ def ndcombine(
         zero_kw=zero_kw,
         scale_kw=scale_kw,
         zero_to_0th=zero_to_0th,
-        scale_to_0th=scale_to_0th
+        scale_to_0th=scale_to_0th,
+        zero_section=zero_section,
+        scale_section=scale_section
     )
     arr = do_zs(arr, zeros=zeros, scales=scales)
     # ----------------------------------------------------------------------- #

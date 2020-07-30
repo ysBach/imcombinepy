@@ -5,11 +5,13 @@ import numpy as np
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats
 from astropy.time import Time
+from astropy.nddata import CCDData
+from astropy.wcs import WCS
 
 from .numpy_util import lmedian, nanlmedian
 
 __all__ = [
-    'filelist', 'write2fits', 'update_hdr',
+    'load_ccd', 'filelist', 'write2fits', 'update_hdr',
     'do_zs', 'get_zsw',
     '_get_combine_shape', '_set_int_dtype', '_get_dtype_limits',
     '_setup_reject',
@@ -21,8 +23,39 @@ __all__ = [
 ]
 
 
-def _get_from_hdr(header, key):
-    pass
+# FIXME: Remove it in the future.
+def load_ccd(path, extension=0, unit=None, hdu_uncertainty="UNCERT",
+             use_wcs=True, hdu_mask='MASK', hdu_flags=None,
+             key_uncertainty_type='UTYPE', prefer_bunit=True, memmap=False,
+             **kwd):
+    '''Copy from ysfitsutilpy
+    https://github.com/ysBach/ysfitsutilpy/blob/50437167e1ad8b62c40dc7436c836254fb8dba37/ysfitsutilpy/misc.py#L100
+    remove it when astropy updated:
+    Note
+    ----
+    CCDData.read cannot read TPV WCS:
+    https://github.com/astropy/astropy/issues/7650
+    Also memory map must be set False to avoid memory problem
+    https://github.com/astropy/astropy/issues/9096
+    Plus, WCS info from astrometry.net solve-field sometimes not
+    understood by CCDData.read....
+    2020-05-31 16:39:51 (KST: GMT+09:00) ysBach
+    '''
+    reader_kw = dict(hdu=extension, hdu_uncertainty=hdu_uncertainty,
+                     hdu_mask=hdu_mask, hdu_flags=hdu_flags,
+                     key_uncertainty_type=key_uncertainty_type,
+                     memmap=memmap, **kwd)
+    if use_wcs:
+        hdr = fits.getheader(path)
+        reader_kw["wcs"] = WCS(hdr)
+        del hdr
+
+    if not prefer_bunit:  # prefer user's input
+        ccd = CCDData.read(path, unit=unit, **reader_kw)
+    else:
+        ccd = CCDData.read(path, unit=None, **reader_kw)
+
+    return ccd
 
 
 def filelist(fpattern, fpaths=None):
@@ -60,8 +93,8 @@ def do_zs(arr, zeros, scales, copy=False):
     return arr
 
 
-def get_zsw(arr, zero, scale, weight, zero_kw, scale_kw, zero_to_0th,
-            scale_to_0th):
+def get_zsw(arr, zero, scale, weight, zero_kw, scale_kw,
+            zero_to_0th, scale_to_0th, zero_section, scale_section):
     if zero is None:
         zero = np.zeros(arr.shape[0])
     if scale is None:
@@ -74,16 +107,28 @@ def get_zsw(arr, zero, scale, weight, zero_kw, scale_kw, zero_to_0th,
     calc_w, weights, fun_w = _set_calc_zsw(arr, weight)
 
     if calc_z:
-        for i in range(arr.shape[0]):
-            zeros.append(fun_z(arr[i, ]))
+        if zero_section is not None:
+            sl_z = slice_from_string(zero_section, fits_convention=True)
+            for i in range(arr.shape[0]):
+                zeros.append(fun_z(arr[(i, *sl_z)]))
+        else:
+            for i in range(arr.shape[0]):
+                zeros.append(fun_z(arr[i, ]))
         zeros = np.array(zeros)
 
     if calc_s:
         if fun_s == fun_z:
             scales = zeros.copy()
         else:
-            for i in range(arr.shape[0]):
-                scales.append(fun_s(arr[i, ]))
+            if scale_section is not None:
+                sl_s = slice_from_string(scale_section, fits_convention=True)
+                for i in range(arr.shape[0]):
+                    scales.append(fun_s(arr[(i, *sl_s)]))
+            else:
+                for i in range(arr.shape[0]):
+                    # scales.append(1)  OK
+                    # scales.append(fun_s(1))  OK
+                    scales.append(fun_s(arr[i, ]))  # not OK
             scales = np.array(scales)
 
     if calc_w:  # TODO: Needs update to match IRAF's...
@@ -106,9 +151,9 @@ def get_zsw(arr, zero, scale, weight, zero_kw, scale_kw, zero_to_0th,
 
 
 # TODO: add sigma-clipped mean, med, std as scale, zero, or weight.
-def _set_calc_zsw(arr, scale_zero_weight, zsw_kw={}):
-    if isinstance(scale_zero_weight, str):
-        zswstr = scale_zero_weight.lower()
+def _set_calc_zsw(arr, zero_scale_weight, zsw_kw={}):
+    if isinstance(zero_scale_weight, str):
+        zswstr = zero_scale_weight.lower()
         calc_zsw = True
         zsw = []
         if zswstr in ['avg', 'average', 'mean']:
@@ -117,16 +162,15 @@ def _set_calc_zsw(arr, scale_zero_weight, zsw_kw={}):
             calcfun = bn.nanmedian
         elif zswstr in ['avg_sc', 'average_sc', 'mean_sc']:
             _ = zsw_kw.pop('axis', None)  # if exist ``axis``, remove it.
-
-            def calcfun(x):
-                return sigma_clipped_stats(x, **zsw_kw)[0]
+            calcfun = lambda x, zsw_kw: sigma_clipped_stats(x, **zsw_kw)[0]
         elif zswstr in ['med_sc', 'medi_sc', 'median_sc']:
             _ = zsw_kw.pop('axis', None)  # if exist ``axis``, remove it.
-
-            def calcfun(x):
-                return sigma_clipped_stats(x, **zsw_kw)[1]
+            calcfun = lambda x, zsw_kw: sigma_clipped_stats(x, **zsw_kw)[1]
+        else:
+            raise ValueError(
+                f"zero, scale, weight ({zero_scale_weight}) not understood")
     else:
-        zsw = np.array(scale_zero_weight)
+        zsw = np.array(zero_scale_weight)
         if zsw.size == arr.shape[0]:
             zsw = zsw.flatten()
         else:
@@ -135,7 +179,7 @@ def _set_calc_zsw(arr, scale_zero_weight, zsw_kw={}):
                 + "identical to arr.shape[0] (number of images to combine)."
             )
         calc_zsw = False
-        zsw = np.array(scale_zero_weight)
+        zsw = np.array(zero_scale_weight)
         calcfun = None
     return calc_zsw, zsw, calcfun
 
@@ -194,15 +238,19 @@ def _setup_reject(arr, mask, nkeep, maxrej, cenfunc):
             )
 
 
-def write2fits(data, header, output, return_hdu=False, **kwargs):
-    hdu = fits.PrimaryHDU(data=data, header=header)
+def write2fits(data, header, output, return_ccd=False, **kwargs):
     try:
-        hdu.writeto(output, **kwargs)
+        unit = header['BUNIT']
+    except (KeyError, IndexError):
+        unit = 'adu'
+    ccd = CCDData(data=data, header=header, unit=unit)
+
+    try:
+        ccd.write(output, **kwargs)
     except fits.VerifyError:
         print("Try using output_verify='fix' to avoid this error.")
-    if return_hdu:
-        return hdu
-    del hdu
+    if return_ccd:
+        return ccd
 
 
 def update_hdr(header, ncombine, imcmb_key, imcmb_val,
