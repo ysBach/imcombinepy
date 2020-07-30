@@ -1,0 +1,389 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparison with IRAF &#8212; imcombinepy v0.0.1</title>
+    <link rel="stylesheet" href="_static/bootstrap-astropy.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css" />
+    
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/language_data.js"></script>
+    <script async="async" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <script type="text/javascript" src="_static/sidebar.js"></script>
+    <script type="text/javascript" src="_static/copybutton.js"></script>
+    <link rel="shortcut icon" href="_static/astropy_logo.ico"/>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Combining APIs" href="api/combine.html" />
+    <link rel="prev" title="Rejection APIs" href="api/reject.html" />
+    <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:200,600' rel='stylesheet' type='text/css'/>
+
+  </head><body>
+<div class="topbar">
+  <a class="brand" title="Documentation Home" href="index.html"><span id="logotext1">imcombine</span><span id="logotext2">py</span><span id="logotext3">:docs</span></a>
+  <ul>
+    
+    <li><a class="homelink" title="Astropy Homepage" href="http://www.astropy.org"></a></li>
+    <li><a title="General Index" href="genindex.html">Index</a></li>
+    <li><a title="Module Index" href="py-modindex.html">Modules</a></li>
+    <li>
+      
+      
+<form action="search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <input type="hidden" name="check_keywords" value="yes" />
+  <input type="hidden" name="area" value="default" />
+</form>
+      
+    </li>
+  </ul>
+</div>
+
+<div class="related">
+    <h3>Navigation</h3>
+    <ul>
+      <li class="right">
+	<a href="api/combine.html" title="Combining APIs">
+	  next &raquo;
+	</a>
+      </li>
+      <li class="right">
+	<a href="api/reject.html" title="Rejection APIs">
+	  &laquo; previous
+	</a>
+	 |
+      </li>
+      <li>
+	<a href="index.html">imcombinepy v0.0.1</a>
+	 &#187;
+      </li>
+      
+      <li>Comparison with IRAF</li> 
+    </ul>
+</div>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="comparison-with-iraf">
+<span id="irafcomparison"></span><h1>Comparison with IRAF<a class="headerlink" href="#comparison-with-iraf" title="Permalink to this headline">¶</a></h1>
+<p><a class="reference internal" href="api/combine.html#imcombinepy.combine.fitscombine" title="imcombinepy.combine.fitscombine"><code class="xref py py-func docutils literal notranslate"><span class="pre">imcombinepy.combine.fitscombine()</span></code></a> function is made to <strong>replace</strong> IRAF’s <a class="reference external" href="https://iraf.net/irafhelp.php?val=imcombine&amp;help=Help+Page">IMCOMBINE</a>. It is using <a class="reference internal" href="api/combine.html#imcombinepy.combine.ndcombine" title="imcombinepy.combine.ndcombine"><code class="xref py py-func docutils literal notranslate"><span class="pre">imcombinepy.combine.ndcombine()</span></code></a>, but in a way that is designed for FITS file formats. I tried to follow IRAF’s IMCOMBINE, while some parts are changed.</p>
+<p>At the moment (2020-07-20 12:24:24 (KST: GMT+09:00)), the <code class="docutils literal notranslate"><span class="pre">testcombine</span></code> folder which contains all the data (FITS files) I used below is <strong>available via my personal</strong> <a class="reference external" href="https://www.dropbox.com/sh/ehe696rs0uvh6zd/AABQtCvLdiI133l2tB208wSNa?dl=0">Dropbox</a>.</p>
+<p>For the generation of all test FITS files, I fixed the following arguments to <a class="reference external" href="https://iraf.net/irafhelp.php?val=imcombine&amp;help=Help+Page">IMCOMBINE</a>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>  <span class="n">IRAF</span> <span class="n">IMCOMBINE</span>        <span class="n">imcombinepy</span>
+<span class="o">*</span> <span class="n">nkeep</span> <span class="o">=</span> <span class="mi">3</span>             <span class="n">nkeep</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">maxrej</span><span class="o">=</span><span class="n">ncombine</span>
+<span class="o">*</span> <span class="n">lsigma</span><span class="p">,</span> <span class="n">hsigma</span> <span class="o">=</span> <span class="mi">2</span>    <span class="n">sigma</span><span class="o">=</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">)</span>
+<span class="o">*</span> <span class="n">sigscale</span> <span class="o">=</span> <span class="mi">0</span>          <span class="n">non</span><span class="o">-</span><span class="n">zero</span> <span class="n">sigscale</span> <span class="ow">not</span> <span class="n">implemented</span>
+<span class="o">*</span> <span class="n">mclip</span><span class="o">+</span>                <span class="n">cenfunc</span><span class="o">=</span><span class="s1">&#39;median&#39;</span>
+</pre></div>
+</div>
+<p>i.e., I did <strong>median-centered 2-sigma clipping if rejection is turned on</strong>. The output file name has the following convention:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">&lt;</span><span class="n">offsets</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">combine</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">reject</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">zero</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">scale</span><span class="o">&gt;</span><span class="p">[</span><span class="n">_mask</span><span class="o">/</span><span class="n">_nrej</span><span class="o">/</span><span class="n">_sigma</span><span class="p">]</span><span class="o">.</span><span class="n">fits</span>
+</pre></div>
+</div>
+<p>If <code class="docutils literal notranslate"><span class="pre">'none'</span></code> is used, it is denoted as <code class="docutils literal notranslate"><span class="pre">x</span></code>. The offsets are set to none (i.e., image coordinate) most of the time, because IRAF seems to calculate the WCS offset incorrectly (see note in <a class="reference internal" href="api/combine.html#imcombinepy.combine.fitscombine" title="imcombinepy.combine.fitscombine"><code class="xref py py-func docutils literal notranslate"><span class="pre">fitscombine()</span></code></a>’s <code class="docutils literal notranslate"><span class="pre">offsets</span></code> argument).</p>
+<div class="section" id="testing-iraf-results">
+<h2>Testing IRAF Results<a class="headerlink" href="#testing-iraf-results" title="Permalink to this headline">¶</a></h2>
+<p>In IRAF <a class="reference external" href="https://iraf.net/irafhelp.php?val=imcombine&amp;help=Help+Page">IMCOMBINE</a>, we can specify output files. I used, e.g., the following CL sclipt:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>!rm x_med_sc_x_x*.fits
+imcomb *2005UD* combine=med offsets=&#39;none&#39; scale=&#39;none&#39; zero=&#39;none&#39; reject=sigclip lsigma=2 hsigma=2 mclip+ nkeep=3 sigscale=0 output=x_med_sc_x_x.fits rejmask=mask nrejmasks=nrej sigma=sigma
+imcopy mask.pl x_med_sc_x_x_mask.fits
+imcopy nrej.pl x_med_sc_x_x_nrej.fits
+imcopy sigma.fits x_med_sc_x_x_sigma.fits
+!rm *.pl sigma.fits
+</pre></div>
+</div>
+<p>The log looks like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Jul</span> <span class="mi">15</span> <span class="mi">10</span><span class="p">:</span><span class="mi">25</span><span class="p">:</span> <span class="n">IMCOMBINE</span>
+  <span class="n">combine</span> <span class="o">=</span> <span class="n">median</span><span class="p">,</span> <span class="n">scale</span> <span class="o">=</span> <span class="n">none</span><span class="p">,</span> <span class="n">zero</span> <span class="o">=</span> <span class="n">none</span><span class="p">,</span> <span class="n">weight</span> <span class="o">=</span> <span class="n">none</span>
+  <span class="n">reject</span> <span class="o">=</span> <span class="n">sigclip</span><span class="p">,</span> <span class="n">mclip</span> <span class="o">=</span> <span class="n">yes</span><span class="p">,</span> <span class="n">nkeep</span> <span class="o">=</span> <span class="mi">3</span>
+  <span class="n">lsigma</span> <span class="o">=</span> <span class="mf">2.</span><span class="p">,</span> <span class="n">hsigma</span> <span class="o">=</span> <span class="mf">2.</span>
+  <span class="n">blank</span> <span class="o">=</span> <span class="mf">0.</span>
+
+                <span class="n">Images</span>
+  <span class="n">bdfc_2005UD_20181012</span><span class="o">-</span><span class="mi">140207</span><span class="n">_R_60</span><span class="o">.</span><span class="mf">0.</span><span class="n">fits</span>
+  <span class="n">bdfc_2005UD_20181012</span><span class="o">-</span><span class="mi">140703</span><span class="n">_R_60</span><span class="o">.</span><span class="mf">0.</span><span class="n">fits</span>
+  <span class="n">bdfc_2005UD_20181012</span><span class="o">-</span><span class="mi">141159</span><span class="n">_R_60</span><span class="o">.</span><span class="mf">0.</span><span class="n">fits</span>
+  <span class="n">bdfc_2005UD_20181012</span><span class="o">-</span><span class="mi">141654</span><span class="n">_R_60</span><span class="o">.</span><span class="mf">0.</span><span class="n">fits</span>
+  <span class="n">bdfc_2005UD_20181012</span><span class="o">-</span><span class="mi">142150</span><span class="n">_R_60</span><span class="o">.</span><span class="mf">0.</span><span class="n">fits</span>
+  <span class="n">bdfc_2005UD_20181012</span><span class="o">-</span><span class="mi">142646</span><span class="n">_R_60</span><span class="o">.</span><span class="mf">0.</span><span class="n">fits</span>
+  <span class="n">bdfc_2005UD_20181012</span><span class="o">-</span><span class="mi">143142</span><span class="n">_R_60</span><span class="o">.</span><span class="mf">0.</span><span class="n">fits</span>
+  <span class="n">bdfc_2005UD_20181012</span><span class="o">-</span><span class="mi">143637</span><span class="n">_R_60</span><span class="o">.</span><span class="mf">0.</span><span class="n">fits</span>
+  <span class="n">bdfc_2005UD_20181012</span><span class="o">-</span><span class="mi">144133</span><span class="n">_R_60</span><span class="o">.</span><span class="mf">0.</span><span class="n">fits</span>
+  <span class="n">bdfc_2005UD_20181012</span><span class="o">-</span><span class="mi">144629</span><span class="n">_R_60</span><span class="o">.</span><span class="mf">0.</span><span class="n">fits</span>
+  <span class="n">bdfc_2005UD_20181012</span><span class="o">-</span><span class="mi">145126</span><span class="n">_R_60</span><span class="o">.</span><span class="mf">0.</span><span class="n">fits</span>
+  <span class="n">bdfc_2005UD_20181012</span><span class="o">-</span><span class="mi">145621</span><span class="n">_R_60</span><span class="o">.</span><span class="mf">0.</span><span class="n">fits</span>
+
+  <span class="n">Output</span> <span class="n">image</span> <span class="o">=</span> <span class="n">x_med_sc_x_x</span><span class="o">.</span><span class="n">fits</span><span class="p">,</span> <span class="n">ncombine</span> <span class="o">=</span> <span class="mi">12</span>
+  <span class="n">Rejection</span> <span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span><span class="o">.</span><span class="n">pl</span>
+  <span class="n">Number</span> <span class="n">rejected</span> <span class="n">mask</span> <span class="o">=</span> <span class="n">nrej</span><span class="o">.</span><span class="n">pl</span>
+  <span class="n">Sigma</span> <span class="n">image</span> <span class="o">=</span> <span class="n">sigma</span>
+<span class="n">mask</span><span class="o">.</span><span class="n">pl</span> <span class="o">-&gt;</span> <span class="n">x_med_sc_x_x_mask</span><span class="o">.</span><span class="n">fits</span>
+<span class="n">nrej</span><span class="o">.</span><span class="n">pl</span> <span class="o">-&gt;</span> <span class="n">x_med_sc_x_x_nrej</span><span class="o">.</span><span class="n">fits</span>
+<span class="n">sigma</span><span class="o">.</span><span class="n">fits</span> <span class="o">-&gt;</span> <span class="n">x_med_sc_x_x_sigma</span><span class="o">.</span><span class="n">fits</span>
+</pre></div>
+</div>
+<p>Here I obtain the 3-D mask <code class="docutils literal notranslate"><span class="pre">blahblah_mask.fits</span></code>. Then I can check</p>
+<ol class="arabic simple">
+<li><dl class="simple">
+<dt>When <code class="docutils literal notranslate"><span class="pre">reject=none</span></code> in IRAF,</dt><dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">mask</span></code> must be all <code class="docutils literal notranslate"><span class="pre">False</span></code>. (CONFIRMED)</p></li>
+<li><p>The output must be identical to the naive combination (<code class="docutils literal notranslate"><span class="pre">np.nanmedian(allimage,</span> <span class="pre">axis=0)</span></code>) (CONFIRMED)</p></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">np.sum(mask,</span> <span class="pre">axis=0)</span></code> identical to <code class="docutils literal notranslate"><span class="pre">_nrej.fits</span></code> file? (CONFIRMED)</p></li>
+<li><p>Median of <code class="docutils literal notranslate"><span class="pre">original[~mask]</span></code> along <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> identical to output of IRAF? (<strong>NO</strong>)</p></li>
+<li><p>Sigma of <code class="docutils literal notranslate"><span class="pre">original[~mask]</span></code> along <code class="docutils literal notranslate"><span class="pre">axis=0</span></code> identical to output sigma of IRAF? (<strong>NO</strong>)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">((data3d</span> <span class="pre">&lt;</span> <span class="pre">(comb_iraf</span> <span class="pre">-</span> <span class="pre">2*sigma_iraf))</span> <span class="pre">|</span> <span class="pre">(data3d</span> <span class="pre">&gt;</span> <span class="pre">(comb_iraf</span> <span class="pre">+</span> <span class="pre">2*sigma_iraf)))</span></code> identical to <code class="docutils literal notranslate"><span class="pre">mask</span></code>? (<strong>NO</strong>)</p></li>
+</ol>
+<p>Although one who is interested in the reasons can check the source codes of IRAF and compare it with this package, I don’t think that’s very necessary at the moment, because it is likely due to the finely-tuned algorithms working behind the scenes under IRAF. (Note that <code class="docutils literal notranslate"><span class="pre">imcombinepy</span></code>’s sigma-clipping is slightly different from that of IRAF and <code class="docutils literal notranslate"><span class="pre">astropy</span></code>: the rejection of the latter two are <em>cumulative</em>. See the <a class="reference external" href="https://github.com/astropy/astropy/issues/7424">astropy GitHub issue</a>). I compared the combined results from <code class="docutils literal notranslate"><span class="pre">imcombinepy</span></code> and IRAF for few images I had, and interestingly, some of artifact-like features visible in the IRAF result is not seen in <code class="docutils literal notranslate"><span class="pre">imcombinepy</span></code> results. Therefore, I just stick to the development of <code class="docutils literal notranslate"><span class="pre">imcombinepy</span></code>, not being bothered by the minor inconsistencies.</p>
+<div class="section" id="codes">
+<h3>Codes<a class="headerlink" href="#codes" title="Permalink to this headline">¶</a></h3>
+<p>The codes for testing items to check the IRAF results are given below:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">glob</span>
+<span class="kn">from</span> <span class="nn">astropy.stats</span> <span class="kn">import</span> <span class="n">sigma_clipped_stats</span><span class="p">,</span> <span class="n">sigma_clip</span>
+<span class="kn">from</span> <span class="nn">astropy.io</span> <span class="kn">import</span> <span class="n">fits</span>
+<span class="kn">import</span> <span class="nn">bottleneck</span> <span class="k">as</span> <span class="nn">bn</span>
+<span class="kn">from</span> <span class="nn">matplotlib</span> <span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+<span class="kn">import</span> <span class="nn">imcombinepy</span> <span class="k">as</span> <span class="nn">icp</span>
+
+<span class="n">fpaths</span> <span class="o">=</span> <span class="n">icp</span><span class="o">.</span><span class="n">filelist</span><span class="p">(</span><span class="s2">&quot;testcombine/*2005UD*.fits&quot;</span><span class="p">)</span>
+<span class="n">data3d</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">fpath</span> <span class="ow">in</span> <span class="n">fpaths</span><span class="p">:</span>
+    <span class="n">data3d</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fits</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">fpath</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+<span class="n">data3d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">data3d</span><span class="p">)</span>
+
+<span class="n">fprefix</span> <span class="o">=</span> <span class="s2">&quot;x_med_sc_x_x&quot;</span>
+<span class="n">comb_iraf</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;testcombine/</span><span class="si">{</span><span class="n">fprefix</span><span class="si">}</span><span class="s2">.fits&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">data</span>
+<span class="n">mask_iraf</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;testcombine/</span><span class="si">{</span><span class="n">fprefix</span><span class="si">}</span><span class="s2">_mask.fits&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">bool</span><span class="p">)</span>
+<span class="n">sigma_iraf</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;testcombine/</span><span class="si">{</span><span class="n">fprefix</span><span class="si">}</span><span class="s2">_sigma.fits&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">data</span>
+<span class="n">nrej_iraf</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;testcombine/</span><span class="si">{</span><span class="n">fprefix</span><span class="si">}</span><span class="s2">_nrej.fits&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">data</span>
+
+<span class="c1"># Test of item 1&amp;2</span>
+<span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_array_almost_equal</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">mask_iraf</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">nrej_iraf</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">fprefix</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;_x_x_x&#39;</span><span class="p">):</span>  <span class="c1"># if no rejection happened</span>
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">count_nonzero</span><span class="p">(</span><span class="n">mask_iraf</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">count_nonzero</span><span class="p">(</span><span class="n">bn</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">data3d</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">!=</span> <span class="n">comb_iraf</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+
+<span class="c1"># Test of item 3</span>
+<span class="n">data3d_nan</span> <span class="o">=</span> <span class="n">data3d</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="n">data3d_nan</span><span class="p">[</span><span class="n">mask_iraf</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+<span class="n">comb_iraf_test</span> <span class="o">=</span> <span class="n">bn</span><span class="o">.</span><span class="n">nanmedian</span><span class="p">(</span><span class="n">data3d_nan</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_array_almost_equal</span><span class="p">(</span><span class="n">comb_iraf_test</span><span class="p">,</span> <span class="n">comb_iraf</span><span class="p">)</span>
+
+<span class="c1"># Test of item 4</span>
+<span class="n">low_iraf</span> <span class="o">=</span> <span class="n">comb_iraf</span> <span class="o">-</span> <span class="n">sigma_iraf</span><span class="o">*</span><span class="mi">2</span>
+<span class="n">upp_iraf</span> <span class="o">=</span> <span class="n">comb_iraf</span> <span class="o">+</span> <span class="n">sigma_iraf</span><span class="o">*</span><span class="mi">2</span>
+<span class="n">mask_test</span> <span class="o">=</span> <span class="p">(</span><span class="n">data3d</span> <span class="o">&lt;</span> <span class="n">low_iraf</span><span class="p">)</span><span class="o">|</span><span class="p">(</span><span class="n">data3d</span> <span class="o">&gt;</span> <span class="n">upp_iraf</span><span class="p">)</span>
+<span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_array_almost_equal</span><span class="p">(</span><span class="n">mask_iraf</span><span class="p">,</span> <span class="n">mask_test</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The last tests fails with the following error message:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">---------------------------------------------------------------------------</span>
+<span class="ne">AssertionError</span>                            <span class="n">Traceback</span> <span class="p">(</span><span class="n">most</span> <span class="n">recent</span> <span class="n">call</span> <span class="n">last</span><span class="p">)</span>
+<span class="o">&lt;</span><span class="n">ipython</span><span class="o">-</span><span class="nb">input</span><span class="o">-</span><span class="mi">7</span><span class="o">-</span><span class="mi">96723</span><span class="n">bf8c563</span><span class="o">&gt;</span> <span class="ow">in</span> <span class="o">&lt;</span><span class="n">module</span><span class="o">&gt;</span>
+     <span class="mi">30</span> <span class="n">data3d_nan</span><span class="p">[</span><span class="n">mask_iraf</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+     <span class="mi">31</span> <span class="n">comb_iraf_test</span> <span class="o">=</span> <span class="n">bn</span><span class="o">.</span><span class="n">nanmedian</span><span class="p">(</span><span class="n">data3d_nan</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="o">---&gt;</span> <span class="mi">32</span> <span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_array_almost_equal</span><span class="p">(</span><span class="n">comb_iraf_test</span><span class="p">,</span> <span class="n">comb_iraf</span><span class="p">)</span>
+
+    <span class="p">[</span><span class="o">...</span> <span class="n">skipping</span> <span class="n">hidden</span> <span class="mi">2</span> <span class="n">frame</span><span class="p">]</span>
+
+<span class="ne">AssertionError</span><span class="p">:</span>
+<span class="n">Arrays</span> <span class="n">are</span> <span class="ow">not</span> <span class="n">almost</span> <span class="n">equal</span> <span class="n">to</span> <span class="mi">6</span> <span class="n">decimals</span>
+
+<span class="n">Mismatched</span> <span class="n">elements</span><span class="p">:</span> <span class="mi">56893</span> <span class="o">/</span> <span class="mi">1048576</span> <span class="p">(</span><span class="mf">5.43</span><span class="o">%</span><span class="p">)</span>
+<span class="n">Max</span> <span class="n">absolute</span> <span class="n">difference</span><span class="p">:</span> <span class="mf">25.471558</span>
+<span class="n">Max</span> <span class="n">relative</span> <span class="n">difference</span><span class="p">:</span> <span class="mf">0.04220776</span>
+ <span class="n">x</span><span class="p">:</span> <span class="n">array</span><span class="p">([[</span><span class="mf">590.2518</span> <span class="p">,</span> <span class="mf">591.7997</span> <span class="p">,</span> <span class="mf">604.74963</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="mf">599.0934</span> <span class="p">,</span> <span class="mf">601.85474</span><span class="p">,</span>
+        <span class="mf">612.655</span>  <span class="p">],</span>
+       <span class="p">[</span><span class="mf">597.7123</span> <span class="p">,</span> <span class="mf">591.2198</span> <span class="p">,</span> <span class="mf">589.5432</span> <span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="mf">601.42896</span><span class="p">,</span> <span class="mf">603.2619</span> <span class="p">,</span><span class="o">...</span>
+ <span class="n">y</span><span class="p">:</span> <span class="n">array</span><span class="p">([[</span><span class="mf">592.3523</span> <span class="p">,</span> <span class="mf">591.7997</span> <span class="p">,</span> <span class="mf">604.74963</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="mf">599.0934</span> <span class="p">,</span> <span class="mf">601.85474</span><span class="p">,</span>
+        <span class="mf">612.655</span>  <span class="p">],</span>
+       <span class="p">[</span><span class="mf">597.7123</span> <span class="p">,</span> <span class="mf">591.2198</span> <span class="p">,</span> <span class="mf">592.72424</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="mf">601.42896</span><span class="p">,</span> <span class="mf">603.2619</span> <span class="p">,</span><span class="o">...</span>
+</pre></div>
+</div>
+<p>and:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">---------------------------------------------------------------------------</span>
+<span class="ne">AssertionError</span>                            <span class="n">Traceback</span> <span class="p">(</span><span class="n">most</span> <span class="n">recent</span> <span class="n">call</span> <span class="n">last</span><span class="p">)</span>
+<span class="o">&lt;</span><span class="n">ipython</span><span class="o">-</span><span class="nb">input</span><span class="o">-</span><span class="mi">9</span><span class="o">-</span><span class="mi">9</span><span class="n">a2f4a2f149f</span><span class="o">&gt;</span> <span class="ow">in</span> <span class="o">&lt;</span><span class="n">module</span><span class="o">&gt;</span>
+    <span class="mi">2</span> <span class="n">upp</span> <span class="o">=</span> <span class="n">comb_iraf</span> <span class="o">+</span> <span class="n">sigma_iraf</span><span class="o">*</span><span class="mi">2</span>
+    <span class="mi">3</span> <span class="n">mask_test</span> <span class="o">=</span> <span class="p">(</span><span class="n">data3d</span> <span class="o">&lt;</span> <span class="n">low</span><span class="p">)</span><span class="o">|</span><span class="p">(</span><span class="n">data3d</span> <span class="o">&gt;</span> <span class="n">upp</span><span class="p">)</span>
+<span class="o">----&gt;</span> <span class="mi">4</span> <span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_array_almost_equal</span><span class="p">(</span><span class="n">mask_iraf</span><span class="p">,</span> <span class="n">mask_test</span><span class="p">)</span>
+
+    <span class="p">[</span><span class="o">...</span> <span class="n">skipping</span> <span class="n">hidden</span> <span class="mi">2</span> <span class="n">frame</span><span class="p">]</span>
+
+<span class="ne">AssertionError</span><span class="p">:</span>
+<span class="n">Arrays</span> <span class="n">are</span> <span class="ow">not</span> <span class="n">almost</span> <span class="n">equal</span> <span class="n">to</span> <span class="mi">6</span> <span class="n">decimals</span>
+
+<span class="n">Mismatched</span> <span class="n">elements</span><span class="p">:</span> <span class="mi">109684</span> <span class="o">/</span> <span class="mi">8388608</span> <span class="p">(</span><span class="mf">1.31</span><span class="o">%</span><span class="p">)</span>
+<span class="n">x</span><span class="p">:</span> <span class="n">array</span><span class="p">([[[</span><span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">],</span>
+        <span class="p">[</span><span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span>  <span class="kc">True</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span>  <span class="kc">True</span><span class="p">],</span>
+        <span class="p">[</span><span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">],</span><span class="o">...</span>
+<span class="n">y</span><span class="p">:</span> <span class="n">array</span><span class="p">([[[</span><span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">],</span>
+        <span class="p">[</span><span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">],</span>
+        <span class="p">[</span><span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">],</span><span class="o">...</span>
+</pre></div>
+</div>
+<p>A hint is that <code class="docutils literal notranslate"><span class="pre">np.count_nonzero(np.sum(mask_test,</span> <span class="pre">axis=0)</span> <span class="pre">-</span> <span class="pre">nrej_iraf</span> <span class="pre">&lt;</span> <span class="pre">0)</span></code> gives <code class="docutils literal notranslate"><span class="pre">20802</span></code> while <code class="docutils literal notranslate"><span class="pre">np.count_nonzero(np.sum(mask_test,</span> <span class="pre">axis=0)</span> <span class="pre">-</span> <span class="pre">nrej_iraf</span> <span class="pre">&gt;</span> <span class="pre">0)</span></code> gives <code class="docutils literal notranslate"><span class="pre">0</span></code>. Therefore, in IRAF, internally additional rejection or restoration is happening, while the output mask or nrej files are not updated. Also, IRAF seems to use <strong>cumulative rejection scheme</strong> (see astropy <a class="reference external" href="https://github.com/astropy/astropy/issues/7350#issuecomment-379269582">issue</a>), which sometimes give unexpected results (see my <a class="reference external" href="https://github.com/astropy/astropy/issues/7424#issuecomment-661559817">comment</a>).</p>
+</div>
+</div>
+<div class="section" id="visual-comparison-of-iraf-and-imcombinepy-results">
+<h2>Visual Comparison of IRAF and <code class="docutils literal notranslate"><span class="pre">imcombinepy</span></code> Results<a class="headerlink" href="#visual-comparison-of-iraf-and-imcombinepy-results" title="Permalink to this headline">¶</a></h2>
+<p>For this section, I used <code class="docutils literal notranslate"><span class="pre">zero='median',</span> <span class="pre">zero_to_0th=True,</span> <span class="pre">irafmode=True,</span> <span class="pre">maxiters=10</span></code> to try to reproduce IRAF results as much as possible.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">imcombinepy</span> <span class="k">as</span> <span class="nn">icp</span>
+
+<span class="k">def</span> <span class="nf">fnamecode</span><span class="p">(</span><span class="n">kwdict</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">val</span> <span class="o">=</span> <span class="n">kwdict</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="n">val</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="s1">&#39;x&#39;</span> <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">val</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+<span class="n">fpattern</span><span class="o">=</span><span class="s2">&quot;testcombine/*2005UD*.fits&quot;</span>
+<span class="n">fpaths</span> <span class="o">=</span> <span class="n">icp</span><span class="o">.</span><span class="n">filelist</span><span class="p">(</span><span class="n">fpattern</span><span class="p">)</span>
+
+<span class="n">combkw</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+    <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">combine</span><span class="o">=</span><span class="s1">&#39;med&#39;</span><span class="p">,</span>
+<span class="c1">#     scale=&quot;med&quot;,</span>
+    <span class="n">zero</span><span class="o">=</span><span class="s2">&quot;med&quot;</span><span class="p">,</span>
+    <span class="n">zero_to_0th</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">reject</span><span class="o">=</span><span class="s1">&#39;sc&#39;</span><span class="p">,</span>
+    <span class="n">cenfunc</span><span class="o">=</span><span class="s1">&#39;med&#39;</span><span class="p">,</span>
+    <span class="n">sigma</span><span class="o">=</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+    <span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="n">maxiters</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="n">verbose</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">nkeep</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+    <span class="n">irafmode</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">memlimit</span><span class="o">=</span><span class="mf">4.e+9</span><span class="p">,</span>
+    <span class="n">return_dict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">full</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">fstem</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">_</span><span class="si">{}</span><span class="s2">_</span><span class="si">{}</span><span class="s2">_</span><span class="si">{}</span><span class="s2">_</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+    <span class="n">fnamecode</span><span class="p">(</span><span class="n">combkw</span><span class="p">,</span> <span class="s1">&#39;offsets&#39;</span><span class="p">),</span>
+    <span class="n">fnamecode</span><span class="p">(</span><span class="n">combkw</span><span class="p">,</span> <span class="s1">&#39;combine&#39;</span><span class="p">),</span>
+    <span class="n">fnamecode</span><span class="p">(</span><span class="n">combkw</span><span class="p">,</span> <span class="s1">&#39;reject&#39;</span><span class="p">),</span>
+    <span class="n">fnamecode</span><span class="p">(</span><span class="n">combkw</span><span class="p">,</span> <span class="s1">&#39;zero&#39;</span><span class="p">),</span>
+    <span class="n">fnamecode</span><span class="p">(</span><span class="n">combkw</span><span class="p">,</span> <span class="s1">&#39;scale&#39;</span><span class="p">)</span>
+<span class="p">)</span>
+<span class="n">fname</span> <span class="o">=</span> <span class="n">fstem</span> <span class="o">+</span> <span class="s2">&quot;.fits&quot;</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">fname</span><span class="p">)</span>
+<span class="n">res</span> <span class="o">=</span> <span class="n">icp</span><span class="o">.</span><span class="n">fitscombine</span><span class="p">(</span><span class="n">fpaths</span><span class="o">=</span><span class="n">fpaths</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="n">fname</span><span class="p">,</span> <span class="o">**</span><span class="n">combkw</span><span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">astropy.stats</span> <span class="kn">import</span> <span class="n">sigma_clipped_stats</span>
+<span class="kn">from</span> <span class="nn">astropy.io</span> <span class="kn">import</span> <span class="n">fits</span>
+<span class="kn">from</span> <span class="nn">matplotlib</span> <span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+<span class="kn">from</span> <span class="nn">mpl_toolkits.axes_grid1</span> <span class="kn">import</span> <span class="n">ImageGrid</span>
+
+<span class="n">comb_iraf</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;testcombine/</span><span class="si">{</span><span class="n">fname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">data</span>
+
+<span class="n">comb</span> <span class="o">=</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;comb&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">data</span>
+
+<span class="n">imgrid_kw</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+    <span class="n">nrows_ncols</span><span class="o">=</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+    <span class="n">axes_pad</span><span class="o">=</span><span class="p">(</span><span class="mf">0.35</span><span class="p">,</span> <span class="mf">0.35</span><span class="p">),</span>
+    <span class="n">label_mode</span><span class="o">=</span><span class="s2">&quot;L&quot;</span><span class="p">,</span> <span class="c1">#&quot;L&quot;</span>
+    <span class="n">share_all</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">cbar_location</span><span class="o">=</span><span class="s2">&quot;right&quot;</span><span class="p">,</span>
+    <span class="n">cbar_mode</span><span class="o">=</span><span class="s2">&quot;each&quot;</span><span class="p">,</span> <span class="c1">#&quot;each&quot;,</span>
+    <span class="n">cbar_size</span><span class="o">=</span><span class="s2">&quot;7%&quot;</span><span class="p">,</span>
+    <span class="n">cbar_pad</span><span class="o">=</span><span class="s2">&quot;1%&quot;</span>
+<span class="p">)</span>
+
+<span class="n">_</span><span class="p">,</span> <span class="n">med</span><span class="p">,</span> <span class="n">std</span> <span class="o">=</span> <span class="n">sigma_clipped_stats</span><span class="p">(</span><span class="n">comb</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">maxiters</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">std_ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">vv</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">vmin</span> <span class="o">=</span> <span class="n">med</span> <span class="o">-</span> <span class="mi">3</span><span class="o">*</span><span class="n">std</span><span class="p">,</span> <span class="n">vmax</span> <span class="o">=</span> <span class="n">med</span> <span class="o">+</span> <span class="mi">3</span><span class="o">*</span><span class="n">std</span><span class="p">)</span>
+
+<span class="n">toplot</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="nb">dict</span><span class="p">(</span><span class="n">X</span><span class="o">=</span><span class="n">comb</span><span class="p">,</span> <span class="o">**</span><span class="n">vv</span><span class="p">),</span>
+    <span class="nb">dict</span><span class="p">(</span><span class="n">X</span><span class="o">=</span><span class="n">comb_iraf</span><span class="p">,</span> <span class="o">**</span><span class="n">vv</span><span class="p">),</span>
+    <span class="nb">dict</span><span class="p">(</span><span class="n">X</span><span class="o">=</span><span class="n">comb</span><span class="o">-</span><span class="n">comb_iraf</span><span class="p">,</span> <span class="n">vmin</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">vmax</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span>
+    <span class="nb">dict</span><span class="p">(</span><span class="n">X</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+<span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">10</span><span class="p">))</span>
+
+<span class="c1"># sub-gridding one of the Axes (see nrows_ncols)</span>
+<span class="n">grid</span> <span class="o">=</span> <span class="n">ImageGrid</span><span class="p">(</span><span class="n">fig</span><span class="p">,</span> <span class="s1">&#39;111&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">imgrid_kw</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">ax</span><span class="p">,</span> <span class="n">cax</span><span class="p">,</span> <span class="n">items</span><span class="p">,</span> <span class="n">tit</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">grid</span><span class="o">.</span><span class="n">cbar_axes</span><span class="p">,</span> <span class="n">toplot</span><span class="p">,</span>
+                            <span class="p">[</span><span class="s2">&quot;imcombinepy&quot;</span><span class="p">,</span> <span class="s2">&quot;IRAF&quot;</span><span class="p">,</span> <span class="s2">&quot;imcombinepy - IRAF&quot;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">]):</span>
+    <span class="k">if</span> <span class="n">items</span><span class="p">[</span><span class="s1">&#39;X&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s2">&quot;off&quot;</span><span class="p">)</span>
+        <span class="n">cax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s2">&quot;off&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">im</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="o">**</span><span class="n">items</span><span class="p">,</span> <span class="n">origin</span><span class="o">=</span><span class="s1">&#39;lower&#39;</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;RdBu_r&#39;</span><span class="p">)</span>
+        <span class="n">cax</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">im</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">tit</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">12</span><span class="p">)</span>
+<span class="c1">#     cax.set_xticklabels(np.around(cax.get_xticks(), 3), rotation=90, fontsize=10, horizontalalignment=&#39;center&#39;, verticalalignment=&#39;center&#39;)</span>
+<span class="c1"># grid.cbar_axes[0].colorbar(im)</span>
+
+
+<span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="s2">&quot;comparison_wcs_sc_x_x.png&quot;</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">bbox_inches</span> <span class="o">=</span> <span class="s2">&quot;tight&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>An example of the view:</p>
+<img alt="_images/comparison_x_med_sc_med_x.png" src="_images/comparison_x_med_sc_med_x.png" />
+<img alt="_images/comparison_x_med_sc_med_x_hist.png" src="_images/comparison_x_med_sc_med_x_hist.png" />
+<p>(drew by <code class="docutils literal notranslate"><span class="pre">ax.hist((comb-comb_iraf).ravel(),</span> <span class="pre">bins=100)</span></code>)</p>
+<p>The difference is not very large, although I am not so comfortable. Some mismatches are, I guess, due to the internal additional rejection/restoration inside IRAF.</p>
+<p>Similar comparison using <code class="docutils literal notranslate"><span class="pre">reject='ccdclip'</span></code>:</p>
+<img alt="_images/comparison_x_med_ccd_med_x.png" src="_images/comparison_x_med_ccd_med_x.png" />
+<img alt="_images/comparison_x_med_ccd_med_x_hist.png" src="_images/comparison_x_med_ccd_med_x_hist.png" />
+<p>Why is IRAF always lower than <code class="docutils literal notranslate"><span class="pre">imcombinepy</span></code>..?</p>
+</div>
+</div>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><h3>Page Contents</h3>
+<ul>
+<li><a class="reference internal" href="#">Comparison with IRAF</a><ul>
+<li><a class="reference internal" href="#testing-iraf-results">Testing IRAF Results</a><ul>
+<li><a class="reference internal" href="#codes">Codes</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#visual-comparison-of-iraf-and-imcombinepy-results">Visual Comparison of IRAF and <code class="docutils literal notranslate"><span class="pre">imcombinepy</span></code> Results</a></li>
+</ul>
+</li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+<footer class="footer">
+  <p class="pull-right">
+    <a href="_sources/IRAFcomparison.rst.txt"
+       rel="nofollow">Page Source</a> &nbsp;
+    <a href="#">Back to Top</a></p>
+  <p>
+    &copy; Copyright 2020-2020, Yoonsoo P. Bach.<br/>
+    Created using <a href="http://www.sphinx-doc.org/en/stable/">Sphinx</a> 3.1.2. &nbsp;
+    Last built 2020-07-30 14:42:10 (GMT+09:00). <br/>
+  </p>
+</footer>
+  </body>
+</html>

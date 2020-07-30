@@ -1,0 +1,811 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>imcombinepy.combine &#8212; imcombinepy v0.0.1</title>
+    <link rel="stylesheet" href="../../_static/bootstrap-astropy.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css" />
+    
+    <script id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/language_data.js"></script>
+    <script async="async" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <script type="text/javascript" src="../../_static/sidebar.js"></script>
+    <script type="text/javascript" src="../../_static/copybutton.js"></script>
+    <link rel="shortcut icon" href="../../_static/astropy_logo.ico"/>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:200,600' rel='stylesheet' type='text/css'/>
+
+  </head><body>
+<div class="topbar">
+  <a class="brand" title="Documentation Home" href="../../index.html"><span id="logotext1">imcombine</span><span id="logotext2">py</span><span id="logotext3">:docs</span></a>
+  <ul>
+    
+    <li><a class="homelink" title="Astropy Homepage" href="http://www.astropy.org"></a></li>
+    <li><a title="General Index" href="../../genindex.html">Index</a></li>
+    <li><a title="Module Index" href="../../py-modindex.html">Modules</a></li>
+    <li>
+      
+      
+<form action="../../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <input type="hidden" name="check_keywords" value="yes" />
+  <input type="hidden" name="area" value="default" />
+</form>
+      
+    </li>
+  </ul>
+</div>
+
+<div class="related">
+    <h3>Navigation</h3>
+    <ul>
+      <li>
+	<a href="../../index.html">imcombinepy v0.0.1</a>
+	 &#187;
+      </li>
+      <li><a href="../index.html" accesskey="U">Module code</a> &#187;</li>
+      
+       
+    </ul>
+</div>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for imcombinepy.combine</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span> <span class="nn">bottleneck</span> <span class="k">as</span> <span class="nn">bn</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">astropy.io</span> <span class="kn">import</span> <span class="n">fits</span>
+<span class="kn">from</span> <span class="nn">astropy.wcs</span> <span class="kn">import</span> <span class="n">WCS</span>
+<span class="kn">from</span> <span class="nn">astropy.nddata</span> <span class="kn">import</span> <span class="n">CCDData</span>
+
+<span class="kn">from</span> <span class="nn">.reject</span> <span class="kn">import</span> <span class="n">sigclip_mask</span><span class="p">,</span> <span class="n">ccdclip_mask</span>
+<span class="kn">from</span> <span class="nn">.util</span> <span class="kn">import</span> <span class="p">(</span><span class="n">_get_combine_shape</span><span class="p">,</span> <span class="n">_set_cenfunc</span><span class="p">,</span> <span class="n">_set_combfunc</span><span class="p">,</span>
+                   <span class="n">_set_gain_rdns</span><span class="p">,</span> <span class="n">_set_int_dtype</span><span class="p">,</span> <span class="n">_set_keeprej</span><span class="p">,</span> <span class="n">_set_mask</span><span class="p">,</span>
+                   <span class="n">_set_reject_name</span><span class="p">,</span> <span class="n">_set_sigma</span><span class="p">,</span> <span class="n">_set_thresh_mask</span><span class="p">,</span> <span class="n">do_zs</span><span class="p">,</span>
+                   <span class="n">filelist</span><span class="p">,</span> <span class="n">get_zsw</span><span class="p">,</span> <span class="n">update_hdr</span><span class="p">,</span> <span class="n">write2fits</span><span class="p">,</span> <span class="n">load_ccd</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">.</span> <span class="kn">import</span> <span class="n">docstrings</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;fitscombine&quot;</span><span class="p">,</span> <span class="s2">&quot;ndcombine&quot;</span><span class="p">]</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">removed : headers, project, masktype, maskvalue, sigscale, grow</span>
+<span class="sd">partial removal:</span>
+<span class="sd">    * combine in [&quot;quadrature&quot;, &quot;nmodel&quot;]</span>
+<span class="sd">replaced</span>
+<span class="sd">    * reject in [&quot;crreject&quot;, &quot;avsigclip&quot;] --&gt; ccdclip with certain params</span>
+<span class="sd">    * offsets in [&quot;grid&quot;, &lt;filename&gt;]  --&gt; offsets in ndarray</span>
+
+<span class="sd">bpmasks                : ?</span>
+<span class="sd">rejmask                : output_mask</span>
+<span class="sd">nrejmasks              : output_nrej</span>
+<span class="sd">expmasks               : Should I implement???</span>
+<span class="sd">sigma                  : output_sigma</span>
+<span class="sd">outtype                : dtype</span>
+<span class="sd">outlimits              : fits_section</span>
+<span class="sd">expname                : exposure_key</span>
+
+<span class="sd"># ALGORITHM PARAMETERS ====================================================== #</span>
+<span class="sd">lthreshold, hthreshold : thresholds (tuple)</span>
+<span class="sd">nlow      , nhigh      : n_minmax (tuple)</span>
+<span class="sd">nkeep                  : nkeep &amp; maxrej</span>
+<span class="sd">                        (IRAF nkeep &gt; 0 &amp;&amp; &lt; 0 case, resp.)</span>
+<span class="sd">mclip                  : cenfunc</span>
+<span class="sd">lsigma    , hsigma     : sigma uple</span>
+<span class="sd">&#39;&#39;&#39;</span>
+
+
+<div class="viewcode-block" id="fitscombine"><a class="viewcode-back" href="../../api/combine.html#imcombinepy.combine.fitscombine">[docs]</a><span class="k">def</span> <span class="nf">fitscombine</span><span class="p">(</span>
+        <span class="n">fpaths</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">fpattern</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ext</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">fits_section</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">blank</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span>
+        <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">thresholds</span><span class="o">=</span><span class="p">[</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">],</span>
+        <span class="n">zero</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">statsec</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">zero_kw</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;cenfunc&#39;</span><span class="p">:</span> <span class="s1">&#39;median&#39;</span><span class="p">,</span> <span class="s1">&#39;stdfunc&#39;</span><span class="p">:</span> <span class="s1">&#39;std&#39;</span><span class="p">,</span> <span class="s1">&#39;std_ddof&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
+        <span class="n">scale_kw</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;cenfunc&#39;</span><span class="p">:</span> <span class="s1">&#39;median&#39;</span><span class="p">,</span> <span class="s1">&#39;stdfunc&#39;</span><span class="p">:</span> <span class="s1">&#39;std&#39;</span><span class="p">,</span> <span class="s1">&#39;std_ddof&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
+        <span class="n">zero_to_0th</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">scale_to_0th</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">zero_section</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scale_section</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">reject</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">cenfunc</span><span class="o">=</span><span class="s1">&#39;median&#39;</span><span class="p">,</span>
+        <span class="n">sigma</span><span class="o">=</span><span class="p">[</span><span class="mf">3.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">],</span> <span class="n">maxiters</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">nkeep</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">maxrej</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">n_minmax</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+        <span class="n">rdnoise</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span> <span class="n">gain</span><span class="o">=</span><span class="mf">1.</span><span class="p">,</span> <span class="n">snoise</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span>
+        <span class="n">pclip</span><span class="o">=-</span><span class="mf">0.5</span><span class="p">,</span>
+        <span class="n">logfile</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">combine</span><span class="o">=</span><span class="s1">&#39;average&#39;</span><span class="p">,</span>
+        <span class="n">dtype</span><span class="o">=</span><span class="s1">&#39;float32&#39;</span><span class="p">,</span>
+        <span class="n">irafmode</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">memlimit</span><span class="o">=</span><span class="mf">2.5e+9</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">full</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">imcmb_key</span><span class="o">=</span><span class="s1">&#39;$I&#39;</span><span class="p">,</span>
+        <span class="n">exposure_key</span><span class="o">=</span><span class="s2">&quot;EXPTIME&quot;</span><span class="p">,</span>
+        <span class="n">output</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_mask</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_nrej</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">output_std</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_low</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_upp</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">output_rejcode</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">return_dict</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span>
+<span class="p">):</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Organizing&quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s1">&#39;... &#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">fpaths</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="n">fpattern</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Give one and only one of fpaths/fpattern.&quot;</span><span class="p">)</span>
+
+    <span class="n">fpaths</span> <span class="o">=</span> <span class="n">filelist</span><span class="p">(</span><span class="n">fpattern</span><span class="p">,</span> <span class="n">fpaths</span><span class="o">=</span><span class="n">fpaths</span><span class="p">)</span>
+    <span class="n">ncombine</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fpaths</span><span class="p">)</span>
+    <span class="n">reject</span> <span class="o">=</span> <span class="n">_set_reject_name</span><span class="p">(</span><span class="n">reject</span><span class="p">)</span>
+    <span class="n">int_dtype</span> <span class="o">=</span> <span class="n">_set_int_dtype</span><span class="p">(</span><span class="n">ncombine</span><span class="p">)</span>
+
+    <span class="c1"># == check if we should care about memory =============================== #</span>
+    <span class="c1"># It usually takes &lt; 1ms for hundreds of files</span>
+    <span class="c1"># What we get here is the lower bound of the total memory used.</span>
+    <span class="c1"># Even if chop_load is False, we later may have to use chopping when</span>
+    <span class="c1"># combine. See below.</span>
+    <span class="c1"># chop_load = False</span>
+    <span class="n">fsize_tot</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">fpath</span> <span class="ow">in</span> <span class="n">fpaths</span><span class="p">:</span>
+        <span class="n">fsize_tot</span> <span class="o">+=</span> <span class="n">Path</span><span class="p">(</span><span class="n">fpath</span><span class="p">)</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_size</span>
+    <span class="c1"># if fsize_tot &gt; memlimit:</span>
+    <span class="c1">#     chop_load = True</span>
+    <span class="c1"># ----------------------------------------------------------------------- #</span>
+
+    <span class="n">hdr0</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">getheader</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">fpaths</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">ext</span><span class="o">=</span><span class="n">ext</span><span class="p">)</span>
+    <span class="n">ndim</span> <span class="o">=</span> <span class="n">hdr0</span><span class="p">[</span><span class="s1">&#39;NAXIS&#39;</span><span class="p">]</span>
+    <span class="c1"># N x ndim. sizes[i, :] = images[i].shape</span>
+    <span class="n">sizes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="n">ncombine</span><span class="p">,</span> <span class="n">ndim</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+
+    <span class="n">imcmb_val</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">extract_exptime</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">scale</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">scale</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;exp&quot;</span><span class="p">,</span> <span class="s2">&quot;expos&quot;</span><span class="p">,</span> <span class="s2">&quot;exposure&quot;</span><span class="p">,</span> <span class="s2">&quot;exptime&quot;</span><span class="p">]:</span>
+            <span class="n">extract_exptime</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">scale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">ncombine</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">reject</span> <span class="o">==</span> <span class="s1">&#39;ccdclip&#39;</span><span class="p">:</span>
+        <span class="n">extract_gain</span><span class="p">,</span> <span class="n">gns</span> <span class="o">=</span> <span class="n">_set_gain_rdns</span><span class="p">(</span><span class="n">gain</span><span class="p">,</span> <span class="n">ncombine</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="n">extract_rdnoise</span><span class="p">,</span> <span class="n">rds</span> <span class="o">=</span> <span class="n">_set_gain_rdns</span><span class="p">(</span><span class="n">rdnoise</span><span class="p">,</span> <span class="n">ncombine</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="n">extract_snoise</span><span class="p">,</span> <span class="n">sns</span> <span class="o">=</span> <span class="n">_set_gain_rdns</span><span class="p">(</span><span class="n">snoise</span><span class="p">,</span> <span class="n">ncombine</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">extract_gain</span><span class="p">,</span> <span class="n">gns</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="mi">1</span>
+        <span class="n">extract_rdnoise</span><span class="p">,</span> <span class="n">rds</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="mi">0</span>
+        <span class="n">extract_snoise</span><span class="p">,</span> <span class="n">sns</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="mi">0</span>
+
+    <span class="c1"># == organize offsets =================================================== #</span>
+    <span class="c1"># TODO: if offsets is None and ``fsize_tot`` &lt;&lt; memlimit, why not</span>
+    <span class="c1"># just load all data here?</span>
+    <span class="c1"># initialize</span>
+    <span class="n">use_wcs</span><span class="p">,</span> <span class="n">use_phy</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">offsets</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">offsets</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;world&#39;</span><span class="p">,</span> <span class="s1">&#39;wcs&#39;</span><span class="p">]:</span>
+            <span class="n">w_ref</span> <span class="o">=</span> <span class="n">WCS</span><span class="p">(</span><span class="n">hdr0</span><span class="p">)</span>
+            <span class="n">cen_ref</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">hdr0</span><span class="p">[</span><span class="sa">f</span><span class="s1">&#39;NAXIS</span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">]</span><span class="o">/</span><span class="mi">2</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ndim</span><span class="p">)])</span>
+            <span class="n">use_wcs</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">offset_mode</span> <span class="o">=</span> <span class="s2">&quot;WCS&quot;</span>
+            <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">ncombine</span><span class="p">,</span> <span class="n">ndim</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">offsets</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;physical&#39;</span><span class="p">,</span> <span class="s1">&#39;phys&#39;</span><span class="p">,</span> <span class="s1">&#39;phy&#39;</span><span class="p">]:</span>
+            <span class="n">use_phy</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">offset_mode</span> <span class="o">=</span> <span class="s2">&quot;Physical&quot;</span>
+            <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">ncombine</span><span class="p">,</span> <span class="n">ndim</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;offsets not understood.&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">offsets</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">offset_mode</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">ncombine</span><span class="p">,</span> <span class="n">ndim</span><span class="p">))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">offsets</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">ncombine</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;offset.shape[0] must be num(images)&quot;</span><span class="p">)</span>
+        <span class="n">offset_mode</span> <span class="o">=</span> <span class="s2">&quot;User&quot;</span>
+        <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">offsets</span><span class="p">)</span>
+
+    <span class="c1"># iterate over files</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">fpath</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">fpaths</span><span class="p">):</span>
+        <span class="n">fpath</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">fpath</span><span class="p">)</span>
+        <span class="n">hdr</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">getheader</span><span class="p">(</span><span class="n">fpath</span><span class="p">,</span> <span class="n">ext</span><span class="o">=</span><span class="n">ext</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">imcmb_key</span> <span class="o">!=</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">imcmb_key</span> <span class="o">==</span> <span class="s2">&quot;$I&quot;</span><span class="p">:</span>
+                <span class="n">imcmb_val</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fpath</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">imcmb_val</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">hdr</span><span class="p">[</span><span class="n">imcmb_key</span><span class="p">])</span>
+                <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                    <span class="n">imcmb_val</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">extract_exptime</span><span class="p">:</span>
+            <span class="n">scale</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">hdr</span><span class="p">[</span><span class="n">exposure_key</span><span class="p">])</span>
+
+        <span class="k">if</span> <span class="n">extract_gain</span><span class="p">:</span>
+            <span class="n">gns</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">hdr</span><span class="p">[</span><span class="n">gain</span><span class="p">])</span>  <span class="c1"># gain is given as header key</span>
+
+        <span class="k">if</span> <span class="n">extract_rdnoise</span><span class="p">:</span>
+            <span class="n">rds</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">hdr</span><span class="p">[</span><span class="n">rdnoise</span><span class="p">])</span>  <span class="c1"># rdnoise is given as header key</span>
+
+        <span class="k">if</span> <span class="n">extract_snoise</span><span class="p">:</span>
+            <span class="n">sns</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">hdr</span><span class="p">[</span><span class="n">snoise</span><span class="p">])</span>  <span class="c1"># snoise is given as header key</span>
+
+        <span class="k">if</span> <span class="n">hdr</span><span class="p">[</span><span class="s1">&#39;NAXIS&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="n">ndim</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;All FITS files must have the identical dimensionality, &quot;</span>
+                <span class="o">+</span> <span class="s2">&quot;though they can have different sizes.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Update offsets if WCS or Physical should be used</span>
+        <span class="k">if</span> <span class="n">use_wcs</span><span class="p">:</span>
+            <span class="c1"># Code if using WCS, which may be much slower (but accurate?)</span>
+            <span class="c1"># Find the center&#39;s pixel position in w_ref, in nearest int</span>
+            <span class="n">w</span> <span class="o">=</span> <span class="n">WCS</span><span class="p">(</span><span class="n">hdr</span><span class="p">)</span>
+            <span class="n">cen</span> <span class="o">=</span> <span class="p">[</span><span class="n">hdr</span><span class="p">[</span><span class="sa">f</span><span class="s1">&#39;NAXIS</span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">]</span><span class="o">/</span><span class="mi">2</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ndim</span><span class="p">)]</span>
+            <span class="n">cen_coo</span> <span class="o">=</span> <span class="n">w</span><span class="o">.</span><span class="n">all_pix2world</span><span class="p">(</span><span class="o">*</span><span class="n">cen</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="n">cen</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">around</span><span class="p">(</span><span class="n">w_ref</span><span class="o">.</span><span class="n">all_world2pix</span><span class="p">(</span><span class="o">*</span><span class="n">cen_coo</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+            <span class="c1"># NOTE: the indexing in python is [z, y, x] order!!</span>
+            <span class="n">offsets</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">cen_ref</span> <span class="o">-</span> <span class="n">cen</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="c1"># For IRAF-like calculation, use</span>
+            <span class="c1"># offsets[i, ] = [hdr[f&#39;CRPIX{i}&#39;] for i in range(ndim, 0, -1)]</span>
+        <span class="k">elif</span> <span class="n">use_phy</span><span class="p">:</span>
+            <span class="c1"># NOTE: the indexing in python is [z, y, x] order!!</span>
+            <span class="n">offsets</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">hdr</span><span class="p">[</span><span class="sa">f</span><span class="s1">&#39;LTV</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ndim</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)]</span>
+
+        <span class="c1"># NOTE: the indexing in python is [z, y, x] order!!</span>
+        <span class="n">sizes</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">hdr</span><span class="p">[</span><span class="sa">f</span><span class="s1">&#39;NAXIS</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ndim</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)]</span>
+
+        <span class="k">del</span> <span class="n">hdr</span>
+        <span class="c1"># ------------------------------------------------------------------- #</span>
+
+    <span class="c1"># == Check the size of the temporary array for combination ============== #</span>
+    <span class="n">offsets</span><span class="p">,</span> <span class="n">sh_comb</span> <span class="o">=</span> <span class="n">_get_combine_shape</span><span class="p">(</span><span class="n">sizes</span><span class="p">,</span> <span class="n">offsets</span><span class="p">)</span>
+
+    <span class="c1"># Size of (N+1)-D array before combining along axis=0</span>
+    <span class="n">stacksize</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">prod</span><span class="p">((</span><span class="n">ncombine</span><span class="p">,</span> <span class="o">*</span><span class="n">sh_comb</span><span class="p">))</span><span class="o">*</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">itemsize</span><span class="p">)</span>
+    <span class="c1"># # size estimated by full-stacked array (1st term) plus combined</span>
+    <span class="c1"># # image (1/ncombine), low and upp bounds (each 1/ncombine), mask</span>
+    <span class="c1"># # (bool8), niteration (int8), and code(int8).</span>
+    <span class="c1"># temp_arr_size = stacksize*(1 + 1/ncombine*4)</span>
+
+    <span class="c1"># Copied from ccdproc v 2.0.1</span>
+    <span class="c1"># https://github.com/astropy/ccdproc/blob/b9ec64dfb59aac1d9ca500ad172c4eb31ec305f8/ccdproc/combiner.py#L710</span>
+    <span class="c1"># Set a memory use factor based on profiling</span>
+    <span class="n">combmeth</span> <span class="o">=</span> <span class="n">_set_combfunc</span><span class="p">(</span><span class="n">combine</span><span class="p">)</span>
+    <span class="n">memory_factor</span> <span class="o">=</span> <span class="mi">3</span> <span class="k">if</span> <span class="n">combmeth</span> <span class="o">==</span> <span class="s2">&quot;median&quot;</span> <span class="k">else</span> <span class="mi">2</span>
+    <span class="n">memory_factor</span> <span class="o">*=</span> <span class="mf">1.5</span>
+    <span class="n">mem_req</span> <span class="o">=</span> <span class="n">memory_factor</span> <span class="o">*</span> <span class="n">stacksize</span>
+    <span class="n">num_chunk</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">mem_req</span> <span class="o">/</span> <span class="n">memlimit</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+
+    <span class="k">if</span> <span class="n">num_chunk</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;Currently chunked combine is not supporte T__T. &quot;</span>
+            <span class="o">+</span> <span class="s2">&quot;Please try increasing memlimit to &gt; </span><span class="si">{:.1e}</span><span class="s2">, &quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">mem_req</span><span class="p">)</span>
+            <span class="o">+</span> <span class="s2">&quot;or reduce number of frames, or use combine=&#39;avg&#39; than &#39;median&#39;.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Done.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">num_chunk</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;memlimit reached: Split combine by </span><span class="si">{</span><span class="n">num_chunk</span><span class="si">}</span><span class="s2"> chunks.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># TODO: make chunking</span>
+
+    <span class="c1"># == Setup offset-ed array ============================================== #</span>
+    <span class="c1"># NOTE: Using NaN does not set array with dtype of int... Any solution?</span>
+    <span class="n">arr_full</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="n">ncombine</span><span class="p">,</span> <span class="o">*</span><span class="n">sh_comb</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">mask_full</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="n">ncombine</span><span class="p">,</span> <span class="o">*</span><span class="n">sh_comb</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="n">zeros</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="n">ncombine</span><span class="p">)</span>
+    <span class="n">scales</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="n">ncombine</span><span class="p">)</span>
+    <span class="n">weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="n">ncombine</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">_fpath</span><span class="p">,</span> <span class="n">_offset</span><span class="p">,</span> <span class="n">_size</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">fpaths</span><span class="p">,</span>
+                                                     <span class="n">offsets</span><span class="p">,</span>
+                                                     <span class="n">sizes</span><span class="p">)):</span>
+        <span class="c1"># import os</span>
+        <span class="c1"># import psutil</span>
+        <span class="c1"># import sys</span>
+        <span class="c1"># import gc</span>
+
+        <span class="c1"># process = psutil.Process(os.getpid())</span>
+        <span class="c1"># print(&quot;0: &quot;, process.memory_info().rss/1.e+9)  # in bytes</span>
+
+        <span class="c1"># -- Set slice ------------------------------------------------------ #</span>
+        <span class="n">slices</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="c1"># offset &amp; size at each j-th dimension axis</span>
+        <span class="k">for</span> <span class="n">offset_j</span><span class="p">,</span> <span class="n">size_j</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">_offset</span><span class="p">,</span> <span class="n">_size</span><span class="p">):</span>
+            <span class="n">slices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">slice</span><span class="p">(</span><span class="n">offset_j</span><span class="p">,</span> <span class="n">offset_j</span> <span class="o">+</span> <span class="n">size_j</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+
+        <span class="c1"># -- Set mask ------------------------------------------------------- #</span>
+        <span class="c1"># process = psutil.Process(os.getpid())</span>
+        <span class="c1"># print(&quot;1: &quot;, process.memory_info().rss/1.e+9)  # in bytes</span>
+
+        <span class="n">ccd</span> <span class="o">=</span> <span class="n">load_ccd</span><span class="p">(</span><span class="n">_fpath</span><span class="p">,</span> <span class="n">extension</span><span class="o">=</span><span class="n">ext</span><span class="p">,</span> <span class="n">memmap</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">_data</span> <span class="o">=</span> <span class="n">ccd</span><span class="o">.</span><span class="n">data</span>
+
+        <span class="c1"># process = psutil.Process(os.getpid())</span>
+        <span class="c1"># print(&quot;1-1: &quot;, process.memory_info().rss/1.e+9)  # in bytes</span>
+        <span class="n">_mask</span> <span class="o">=</span> <span class="n">ccd</span><span class="o">.</span><span class="n">mask</span>
+        <span class="c1"># process = psutil.Process(os.getpid())</span>
+        <span class="c1"># print(&quot;1-2: &quot;, process.memory_info().rss/1.e+9)  # in bytes</span>
+
+        <span class="k">if</span> <span class="n">_mask</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">_data</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+        <span class="c1"># process = psutil.Process(os.getpid())</span>
+        <span class="c1"># print(&quot;1-3: &quot;, process.memory_info().rss/1.e+9)  # in bytes</span>
+
+        <span class="k">if</span> <span class="n">mask</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">_mask</span> <span class="o">|=</span> <span class="n">mask</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">]</span>
+
+        <span class="c1"># process = psutil.Process(os.getpid())</span>
+        <span class="c1"># print(&quot;2: &quot;, process.memory_info().rss/1.e+9)  # in bytes</span>
+        <span class="c1"># local_vars = list(locals().items())</span>
+        <span class="c1"># for var, obj in local_vars:</span>
+        <span class="c1">#     print(var, sys.getsizeof(obj))</span>
+
+        <span class="c1"># -- zero and scale --------------------------------------------- #</span>
+        <span class="c1"># better to calculate here than from full array, as the</span>
+        <span class="c1"># latter may contain too many NaNs due to offest shifting.</span>
+        <span class="c1"># TODO: let get_zsw to get functionals for zsw, so _set_calc_zsw</span>
+        <span class="c1"># will not be repeateded for every iteration.</span>
+        <span class="n">_data_fake</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">_data</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:])</span>  <span class="c1"># make a fake (N+1)-D array</span>
+        <span class="n">_z</span><span class="p">,</span> <span class="n">_s</span><span class="p">,</span> <span class="n">_w</span> <span class="o">=</span> <span class="n">get_zsw</span><span class="p">(</span>
+            <span class="n">arr</span><span class="o">=</span><span class="n">_data_fake</span><span class="p">,</span>
+            <span class="n">zero</span><span class="o">=</span><span class="n">zero</span><span class="p">,</span>
+            <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span>
+            <span class="n">weight</span><span class="o">=</span><span class="n">weight</span><span class="p">,</span>
+            <span class="n">zero_kw</span><span class="o">=</span><span class="n">zero_kw</span><span class="p">,</span>
+            <span class="n">scale_kw</span><span class="o">=</span><span class="n">scale_kw</span><span class="p">,</span>
+            <span class="n">zero_to_0th</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>   <span class="c1"># to retain original zero</span>
+            <span class="n">scale_to_0th</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>  <span class="c1"># to retain original scale</span>
+            <span class="n">zero_section</span><span class="o">=</span><span class="n">zero_section</span><span class="p">,</span>
+            <span class="n">scale_section</span><span class="o">=</span><span class="n">scale_section</span>
+        <span class="p">)</span>
+        <span class="n">zeros</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">_z</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">scales</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">_s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">weights</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">_w</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># -- Insertion -------------------------------------------------- #</span>
+        <span class="n">arr_full</span><span class="p">[</span><span class="n">slices</span><span class="p">]</span> <span class="o">=</span> <span class="n">_data</span>
+        <span class="n">mask_full</span><span class="p">[</span><span class="n">slices</span><span class="p">]</span> <span class="o">=</span> <span class="n">_mask</span>
+
+        <span class="c1"># process = psutil.Process(os.getpid())</span>
+        <span class="c1"># print(&quot;3: &quot;, process.memory_info().rss/1.e+9)  # in bytes</span>
+        <span class="k">del</span> <span class="n">ccd</span><span class="p">,</span> <span class="n">_data</span><span class="p">,</span> <span class="n">_mask</span><span class="p">,</span> <span class="n">_data_fake</span>
+        <span class="c1"># process = psutil.Process(os.getpid())</span>
+        <span class="c1"># print(&quot;4: &quot;, process.memory_info().rss/1.e+9)  # in bytes</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;All FITS loaded, rejection &amp; combination starts&quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s1">&#39;... &#39;</span><span class="p">)</span>
+
+    <span class="c1"># ----------------------------------------------------------------------- #</span>
+
+    <span class="c1"># == Combine with rejection! ============================================ #</span>
+    <span class="n">comb</span><span class="p">,</span> <span class="n">std</span><span class="p">,</span> <span class="n">mask_rej</span><span class="p">,</span> <span class="n">mask_thresh</span><span class="p">,</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nit</span><span class="p">,</span> <span class="n">rejcode</span> <span class="o">=</span> <span class="n">ndcombine</span><span class="p">(</span>
+        <span class="n">arr</span><span class="o">=</span><span class="n">arr_full</span><span class="p">,</span>
+        <span class="n">mask</span><span class="o">=</span><span class="n">mask_full</span><span class="p">,</span>
+        <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>  <span class="c1"># No need to retain arr_full.</span>
+        <span class="n">combine</span><span class="o">=</span><span class="n">combine</span><span class="p">,</span>
+        <span class="n">reject</span><span class="o">=</span><span class="n">reject</span><span class="p">,</span>
+        <span class="n">scale</span><span class="o">=</span><span class="n">scales</span><span class="p">,</span>    <span class="c1"># it is scales , NOT scale , as it was updated above.</span>
+        <span class="n">zero</span><span class="o">=</span><span class="n">zeros</span><span class="p">,</span>      <span class="c1"># it is zeros  , NOT zero  , as it was updated above.</span>
+        <span class="n">weight</span><span class="o">=</span><span class="n">weights</span><span class="p">,</span>  <span class="c1"># it is weights, NOT weight, as it was updated above.</span>
+        <span class="n">zero_to_0th</span><span class="o">=</span><span class="n">zero_to_0th</span><span class="p">,</span>
+        <span class="n">scale_to_0th</span><span class="o">=</span><span class="n">scale_to_0th</span><span class="p">,</span>
+        <span class="n">scale_kw</span><span class="o">=</span><span class="n">scale_kw</span><span class="p">,</span>
+        <span class="n">zero_kw</span><span class="o">=</span><span class="n">zero_kw</span><span class="p">,</span>
+        <span class="n">thresholds</span><span class="o">=</span><span class="n">thresholds</span><span class="p">,</span>
+        <span class="n">n_minmax</span><span class="o">=</span><span class="n">n_minmax</span><span class="p">,</span>
+        <span class="n">nkeep</span><span class="o">=</span><span class="n">nkeep</span><span class="p">,</span>
+        <span class="n">maxrej</span><span class="o">=</span><span class="n">maxrej</span><span class="p">,</span>
+        <span class="n">cenfunc</span><span class="o">=</span><span class="n">cenfunc</span><span class="p">,</span>
+        <span class="n">sigma</span><span class="o">=</span><span class="n">sigma</span><span class="p">,</span>
+        <span class="n">maxiters</span><span class="o">=</span><span class="n">maxiters</span><span class="p">,</span>
+        <span class="n">ddof</span><span class="o">=</span><span class="n">ddof</span><span class="p">,</span>
+        <span class="n">rdnoise</span><span class="o">=</span><span class="n">rds</span><span class="p">,</span>  <span class="c1"># it is rds, not rdnoise, as it was updated above.</span>
+        <span class="n">gain</span><span class="o">=</span><span class="n">gns</span><span class="p">,</span>     <span class="c1"># it is gns, not gain   , as it was updated above.</span>
+        <span class="n">snoise</span><span class="o">=</span><span class="n">sns</span><span class="p">,</span>   <span class="c1"># it is sns, not snoise , as it was updated above.</span>
+        <span class="n">pclip</span><span class="o">=</span><span class="n">pclip</span><span class="p">,</span>
+        <span class="n">irafmode</span><span class="o">=</span><span class="n">irafmode</span><span class="p">,</span>
+        <span class="n">full</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+    <span class="n">comb</span> <span class="o">=</span> <span class="n">comb</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">std</span> <span class="o">=</span> <span class="n">std</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">low</span> <span class="o">=</span> <span class="n">low</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">upp</span> <span class="o">=</span> <span class="n">upp</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="c1"># ----------------------------------------------------------------------- #</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Done.&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Making FITS&quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;... &quot;</span><span class="p">)</span>
+
+    <span class="n">mask_total</span> <span class="o">=</span> <span class="n">mask_full</span> <span class="o">|</span> <span class="n">mask_thresh</span> <span class="o">|</span> <span class="n">mask_rej</span>
+
+    <span class="c1"># == Update header properly ============================================= #</span>
+    <span class="c1"># Update WCS or PHYSICAL keywords so that &quot;lock frame wcs&quot;, etc, on</span>
+    <span class="c1"># SAO ds9, for example, to give proper visualization:</span>
+    <span class="k">if</span> <span class="n">use_wcs</span><span class="p">:</span>
+        <span class="c1"># NOTE: the indexing in python is [z, y, x] order!!</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ndim</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+            <span class="n">hdr0</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;CRPIX</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">+=</span> <span class="n">offsets</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">ndim</span> <span class="o">-</span> <span class="n">i</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">use_phy</span><span class="p">:</span>
+        <span class="c1"># NOTE: the indexing in python is [z, y, x] order!!</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ndim</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+            <span class="n">hdr0</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;LTV</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">+=</span> <span class="n">offsets</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">ndim</span> <span class="o">-</span> <span class="n">i</span><span class="p">]</span>
+
+    <span class="n">update_hdr</span><span class="p">(</span><span class="n">hdr0</span><span class="p">,</span> <span class="n">ncombine</span><span class="p">,</span> <span class="n">imcmb_key</span><span class="o">=</span><span class="n">imcmb_key</span><span class="p">,</span> <span class="n">imcmb_val</span><span class="o">=</span><span class="n">imcmb_val</span><span class="p">,</span>
+               <span class="n">offset_mode</span><span class="o">=</span><span class="n">offset_mode</span><span class="p">,</span> <span class="n">offsets</span><span class="o">=</span><span class="n">offsets</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">unit</span> <span class="o">=</span> <span class="n">hdr0</span><span class="p">[</span><span class="s2">&quot;BUNIT&quot;</span><span class="p">]</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">IndexError</span><span class="p">):</span>
+        <span class="n">unit</span> <span class="o">=</span> <span class="s1">&#39;adu&#39;</span>
+
+    <span class="n">comb</span> <span class="o">=</span> <span class="n">CCDData</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">comb</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="n">hdr0</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="n">unit</span><span class="p">)</span>
+
+    <span class="c1"># == Save FITS files ==================================================== #</span>
+    <span class="k">if</span> <span class="n">output</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">comb</span><span class="o">.</span><span class="n">writeto</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">output_std</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">write2fits</span><span class="p">(</span><span class="n">std</span><span class="p">,</span> <span class="n">hdr0</span><span class="p">,</span> <span class="n">output_std</span><span class="p">,</span> <span class="n">return_ccd</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">output_low</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">write2fits</span><span class="p">(</span><span class="n">low</span><span class="p">,</span> <span class="n">hdr0</span><span class="p">,</span> <span class="n">output_low</span><span class="p">,</span> <span class="n">return_ccd</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">output_upp</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">write2fits</span><span class="p">(</span><span class="n">upp</span><span class="p">,</span> <span class="n">hdr0</span><span class="p">,</span> <span class="n">output_upp</span><span class="p">,</span> <span class="n">return_ccd</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">output_nrej</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># Do this BEFORE output_mask!!</span>
+        <span class="n">nrej</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">count_nonzero</span><span class="p">(</span><span class="n">mask_total</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">int_dtype</span><span class="p">)</span>
+        <span class="n">write2fits</span><span class="p">(</span><span class="n">nrej</span><span class="p">,</span> <span class="n">hdr0</span><span class="p">,</span> <span class="n">output_nrej</span><span class="p">,</span> <span class="n">return_ccd</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">output_mask</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># Do this AFTER output_nrej!!</span>
+        <span class="c1"># FITS does not accept boolean. We need uint8.</span>
+        <span class="n">write2fits</span><span class="p">(</span><span class="n">mask_total</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">),</span> <span class="n">hdr0</span><span class="p">,</span> <span class="n">output_mask</span><span class="p">,</span>
+                   <span class="n">return_ccd</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">output_rejcode</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">write2fits</span><span class="p">(</span><span class="n">rejcode</span><span class="p">,</span> <span class="n">hdr0</span><span class="p">,</span> <span class="n">output_rejcode</span><span class="p">,</span> <span class="n">return_ccd</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Done.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># == Return memroy... =================================================== #</span>
+    <span class="k">del</span> <span class="n">hdr0</span><span class="p">,</span> <span class="n">arr_full</span><span class="p">,</span> <span class="n">mask_full</span>
+
+    <span class="c1"># == Return ============================================================= #</span>
+    <span class="k">if</span> <span class="n">full</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">return_dict</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span>
+                <span class="n">comb</span><span class="o">=</span><span class="n">comb</span><span class="p">,</span>
+                <span class="n">std</span><span class="o">=</span><span class="n">std</span><span class="p">,</span>
+                <span class="n">mask_total</span><span class="o">=</span><span class="n">mask_total</span><span class="p">,</span>
+                <span class="n">mask_rej</span><span class="o">=</span><span class="n">mask_rej</span><span class="p">,</span>
+                <span class="n">mask_thresh</span><span class="o">=</span><span class="n">mask_thresh</span><span class="p">,</span>
+                <span class="n">low</span><span class="o">=</span><span class="n">low</span><span class="p">,</span>
+                <span class="n">upp</span><span class="o">=</span><span class="n">upp</span><span class="p">,</span>
+                <span class="n">nit</span><span class="o">=</span><span class="n">nit</span><span class="p">,</span>
+                <span class="n">rejcode</span><span class="o">=</span><span class="n">rejcode</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">comb</span><span class="p">,</span> <span class="n">std</span><span class="p">,</span> <span class="n">mask_total</span><span class="p">,</span> <span class="n">mask_rej</span><span class="p">,</span> <span class="n">mask_thresh</span><span class="p">,</span>
+                    <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nit</span><span class="p">,</span> <span class="n">rejcode</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">comb</span></div>
+
+
+<span class="n">fitscombine</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="s1">&#39;&#39;&#39;A helper function for ndcombine to cope with FITS files.</span>
+
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+
+<span class="s1">    Parameters</span>
+<span class="s1">    ----------</span>
+<span class="s1">    fpaths : list-like of path-like, optional.</span>
+<span class="s1">        The list of file paths to be combined. These must be FITS files.</span>
+<span class="s1">        One and only one of ``fpaths`` or ``fpattern`` must be provided.</span>
+
+<span class="s1">    fpattern : str, optional.</span>
+<span class="s1">        The `~glob` pattern for files (e.g., ``&quot;2020*[012].fits&quot;``).</span>
+<span class="s1">        One and only one of ``fpaths`` or ``fpattern`` must be provided.</span>
+
+<span class="s1">    mask : ndarray, optional.</span>
+<span class="s1">        The mask of bad pixels. If given, it must satisfy</span>
+<span class="s1">        ``mask.shape[0]`` identical to the number of images.</span>
+
+<span class="s1">        .. note::</span>
+<span class="s1">            If the user ever want to use masking, it&#39;s more convenient</span>
+<span class="s1">            to use ``&#39;MASK&#39;`` extension to the FITS files or replace</span>
+<span class="s1">            bad pixel to very large or small numbers and use</span>
+<span class="s1">            ``thresholds``.</span>
+
+<span class="s1">    ext : int, optional.</span>
+<span class="s1">        The extension to be used in loading the FITS files.</span>
+
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+
+<span class="s1">    imcmb_key : str</span>
+<span class="s1">        The thing to add as ``IMCMBnnn`` in the output FITS file header.</span>
+<span class="s1">        If ``&quot;$I&quot;``, following the default of IRAF, the file&#39;s name will</span>
+<span class="s1">        be added. Otherwise, it should be a header keyword. If the key</span>
+<span class="s1">        does not exist in ``nnn``-th file, a null string will be added.</span>
+<span class="s1">        If a null string (``imcmb_key=&quot;&quot;``), it does not set the</span>
+<span class="s1">        ``IMCMBnnn`` keywords nor deletes any existing keyword.</span>
+
+<span class="s1">        .. warning::</span>
+<span class="s1">            If more than 999 files are combined, only the first 999</span>
+<span class="s1">            files will be recorded in the header.</span>
+
+<span class="s1">    exposure_key : str, optional.</span>
+<span class="s1">        The header keyword which contains the information about the</span>
+<span class="s1">        exposure time of each FITS file. This is used only if scaling is</span>
+<span class="s1">        done for exposure time (see ``scale``).</span>
+
+<span class="s1">    irafmode : bool, optional.</span>
+<span class="s1">        Whether to use IRAF-like pixel restoration scheme.</span>
+
+<span class="s1">    output : path-like, optional</span>
+<span class="s1">        The path to the final combined FITS file. It has dtype of</span>
+<span class="s1">        ``dtype`` and dimension identical to each input image.</span>
+<span class="s1">        Optional keyword arguments for ``fits.writeto()`` can be</span>
+<span class="s1">        provided as ``**kwargs``.</span>
+
+<span class="s1">    output_xxx : path-like, optional</span>
+<span class="s1">        The output path to the mask, number of rejected pixels at each</span>
+<span class="s1">        position, final ``nanstd(ddof=ddof)`` result,</span>
+<span class="s1">        lower and upper bounds for rejection, and the integer codes for</span>
+<span class="s1">        the rejection algorithm (see ``mask_total``, ``mask_rej``,</span>
+<span class="s1">        ``sigma``, ``low``, ``upp``, and ``rejcode`` in Returns.)</span>
+
+<span class="s1">    return_dict : bool, optional.</span>
+<span class="s1">        Whether to return the results as dict (works only if</span>
+<span class="s1">        ``full=True``).</span>
+
+<span class="s1">    Returns</span>
+<span class="s1">    -------</span>
+<span class="s1">    Returns the followings depending on ``full`` and ``return_dict``.</span>
+
+<span class="s1">    comb : `astropy.nddata.CCDData` (dtype ``dtype``)</span>
+<span class="s1">        The combined data.</span>
+
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+<span class="s1">    &#39;&#39;&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">docstrings</span><span class="o">.</span><span class="n">NDCOMB_NOT_IMPLEMENTED</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
+               <span class="n">docstrings</span><span class="o">.</span><span class="n">OFFSETS_LONG</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
+               <span class="n">docstrings</span><span class="o">.</span><span class="n">NDCOMB_PARAMETERS_COMMON</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
+               <span class="n">docstrings</span><span class="o">.</span><span class="n">NDCOMB_RETURNS_COMMON</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
+               <span class="n">docstrings</span><span class="o">.</span><span class="n">IMCOMBINE_LINK</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">))</span>
+
+
+<span class="c1"># --------------------------------------------------------------------------- #</span>
+<div class="viewcode-block" id="ndcombine"><a class="viewcode-back" href="../../api/combine.html#imcombinepy.combine.ndcombine">[docs]</a><span class="k">def</span> <span class="nf">ndcombine</span><span class="p">(</span>
+        <span class="n">arr</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">blank</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span>
+        <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">thresholds</span><span class="o">=</span><span class="p">[</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">],</span>
+        <span class="n">zero</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">zero_kw</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;cenfunc&#39;</span><span class="p">:</span> <span class="s1">&#39;median&#39;</span><span class="p">,</span> <span class="s1">&#39;stdfunc&#39;</span><span class="p">:</span> <span class="s1">&#39;std&#39;</span><span class="p">,</span> <span class="s1">&#39;std_ddof&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
+        <span class="n">scale_kw</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;cenfunc&#39;</span><span class="p">:</span> <span class="s1">&#39;median&#39;</span><span class="p">,</span> <span class="s1">&#39;stdfunc&#39;</span><span class="p">:</span> <span class="s1">&#39;std&#39;</span><span class="p">,</span> <span class="s1">&#39;std_ddof&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
+        <span class="n">zero_to_0th</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">scale_to_0th</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">zero_section</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scale_section</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">reject</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">cenfunc</span><span class="o">=</span><span class="s1">&#39;median&#39;</span><span class="p">,</span>
+        <span class="n">sigma</span><span class="o">=</span><span class="p">[</span><span class="mf">3.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">],</span> <span class="n">maxiters</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">nkeep</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">maxrej</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">n_minmax</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+        <span class="n">rdnoise</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span> <span class="n">gain</span><span class="o">=</span><span class="mf">1.</span><span class="p">,</span> <span class="n">snoise</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span>
+        <span class="n">pclip</span><span class="o">=-</span><span class="mf">0.5</span><span class="p">,</span>
+        <span class="n">combine</span><span class="o">=</span><span class="s1">&#39;average&#39;</span><span class="p">,</span>
+        <span class="n">dtype</span><span class="o">=</span><span class="s1">&#39;float32&#39;</span><span class="p">,</span>
+        <span class="n">memlimit</span><span class="o">=</span><span class="mf">2.5e+9</span><span class="p">,</span>
+        <span class="n">irafmode</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">full</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<span class="p">):</span>
+    <span class="k">if</span> <span class="n">copy</span><span class="p">:</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;1-D array combination is not supported!&quot;</span><span class="p">)</span>
+
+    <span class="n">_mask</span> <span class="o">=</span> <span class="n">_set_mask</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">mask</span><span class="p">)</span>  <span class="c1"># _mask = propagated through this function.</span>
+    <span class="n">sigma_lower</span><span class="p">,</span> <span class="n">sigma_upper</span> <span class="o">=</span> <span class="n">_set_sigma</span><span class="p">(</span><span class="n">sigma</span><span class="p">)</span>
+    <span class="n">nkeep</span><span class="p">,</span> <span class="n">maxrej</span> <span class="o">=</span> <span class="n">_set_keeprej</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">nkeep</span><span class="p">,</span> <span class="n">maxrej</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">cenfunc</span> <span class="o">=</span> <span class="n">_set_cenfunc</span><span class="p">(</span><span class="n">cenfunc</span><span class="p">)</span>
+    <span class="n">reject</span> <span class="o">=</span> <span class="n">_set_reject_name</span><span class="p">(</span><span class="n">reject</span><span class="p">)</span>
+    <span class="n">maxiters</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">maxiters</span><span class="p">)</span>
+    <span class="n">ddof</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">ddof</span><span class="p">)</span>
+
+    <span class="n">combfunc</span> <span class="o">=</span> <span class="n">_set_combfunc</span><span class="p">(</span><span class="n">combine</span><span class="p">,</span> <span class="n">nameonly</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">nan</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># == 01 - Thresholding + Initial masking ================================ #</span>
+    <span class="c1"># Updating mask: _mask = _mask | mask_thresh</span>
+    <span class="n">mask_thresh</span> <span class="o">=</span> <span class="n">_set_thresh_mask</span><span class="p">(</span>
+        <span class="n">arr</span><span class="o">=</span><span class="n">arr</span><span class="p">,</span>
+        <span class="n">mask</span><span class="o">=</span><span class="n">_mask</span><span class="p">,</span>
+        <span class="n">thresholds</span><span class="o">=</span><span class="n">thresholds</span><span class="p">,</span>
+        <span class="n">update_mask</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+
+    <span class="c1"># if safemode:</span>
+    <span class="c1">#     # Backup the pixels which are rejected by thresholding and</span>
+    <span class="c1">#     # initial mask for future restoration (see below) for debugging</span>
+    <span class="c1">#     # purpose.</span>
+    <span class="c1">#     backup_thresh = arr[mask_thresh]</span>
+    <span class="c1">#     backup_thresh_inmask = arr[_mask]</span>
+
+    <span class="n">arr</span><span class="p">[</span><span class="n">_mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+    <span class="c1"># ----------------------------------------------------------------------- #</span>
+
+    <span class="c1"># == 02 - Calculate zero, scale, weights ================================ #</span>
+    <span class="c1"># This should be done before rejection but after threshold masking..</span>
+    <span class="n">zeros</span><span class="p">,</span> <span class="n">scales</span><span class="p">,</span> <span class="n">weights</span> <span class="o">=</span> <span class="n">get_zsw</span><span class="p">(</span>
+        <span class="n">arr</span><span class="o">=</span><span class="n">arr</span><span class="p">,</span>
+        <span class="n">zero</span><span class="o">=</span><span class="n">zero</span><span class="p">,</span>
+        <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span>
+        <span class="n">weight</span><span class="o">=</span><span class="n">weight</span><span class="p">,</span>
+        <span class="n">zero_kw</span><span class="o">=</span><span class="n">zero_kw</span><span class="p">,</span>
+        <span class="n">scale_kw</span><span class="o">=</span><span class="n">scale_kw</span><span class="p">,</span>
+        <span class="n">zero_to_0th</span><span class="o">=</span><span class="n">zero_to_0th</span><span class="p">,</span>
+        <span class="n">scale_to_0th</span><span class="o">=</span><span class="n">scale_to_0th</span><span class="p">,</span>
+        <span class="n">zero_section</span><span class="o">=</span><span class="n">zero_section</span><span class="p">,</span>
+        <span class="n">scale_section</span><span class="o">=</span><span class="n">scale_section</span>
+    <span class="p">)</span>
+    <span class="n">arr</span> <span class="o">=</span> <span class="n">do_zs</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">zeros</span><span class="o">=</span><span class="n">zeros</span><span class="p">,</span> <span class="n">scales</span><span class="o">=</span><span class="n">scales</span><span class="p">)</span>
+    <span class="c1"># ----------------------------------------------------------------------- #</span>
+
+    <span class="c1"># == 02 - Rejection ===================================================== #</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">reject</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">reject</span> <span class="o">==</span> <span class="s1">&#39;sigclip&#39;</span><span class="p">:</span>
+            <span class="n">_mask_rej</span><span class="p">,</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nit</span><span class="p">,</span> <span class="n">rejcode</span> <span class="o">=</span> <span class="n">sigclip_mask</span><span class="p">(</span>
+                <span class="n">arr</span><span class="p">,</span>
+                <span class="n">mask</span><span class="o">=</span><span class="n">_mask</span><span class="p">,</span>
+                <span class="n">sigma_lower</span><span class="o">=</span><span class="n">sigma_lower</span><span class="p">,</span>
+                <span class="n">sigma_upper</span><span class="o">=</span><span class="n">sigma_upper</span><span class="p">,</span>
+                <span class="n">maxiters</span><span class="o">=</span><span class="n">maxiters</span><span class="p">,</span>
+                <span class="n">ddof</span><span class="o">=</span><span class="n">ddof</span><span class="p">,</span>
+                <span class="n">nkeep</span><span class="o">=</span><span class="n">nkeep</span><span class="p">,</span>
+                <span class="n">maxrej</span><span class="o">=</span><span class="n">maxrej</span><span class="p">,</span>
+                <span class="n">cenfunc</span><span class="o">=</span><span class="n">cenfunc</span><span class="p">,</span>
+                <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">irafmode</span><span class="o">=</span><span class="n">irafmode</span><span class="p">,</span>
+                <span class="n">full</span><span class="o">=</span><span class="kc">True</span>
+            <span class="p">)</span>
+            <span class="c1"># _mask is a subset of _mask_rej, so to extract pixels which</span>
+            <span class="c1"># are masked PURELY due to the rejection is:</span>
+            <span class="n">mask_rej</span> <span class="o">=</span> <span class="n">_mask_rej</span> <span class="o">^</span> <span class="n">_mask</span>
+        <span class="k">elif</span> <span class="n">reject</span> <span class="o">==</span> <span class="s1">&#39;minmax&#39;</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">elif</span> <span class="n">reject</span> <span class="o">==</span> <span class="s1">&#39;ccdclip&#39;</span><span class="p">:</span>
+            <span class="n">_mask_rej</span><span class="p">,</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nit</span><span class="p">,</span> <span class="n">rejcode</span> <span class="o">=</span> <span class="n">ccdclip_mask</span><span class="p">(</span>
+                <span class="n">arr</span><span class="p">,</span>
+                <span class="n">mask</span><span class="o">=</span><span class="n">_mask</span><span class="p">,</span>
+                <span class="n">sigma_lower</span><span class="o">=</span><span class="n">sigma_lower</span><span class="p">,</span>
+                <span class="n">sigma_upper</span><span class="o">=</span><span class="n">sigma_upper</span><span class="p">,</span>
+                <span class="n">scale_ref</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">scales</span><span class="p">),</span>
+                <span class="n">zero_ref</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">zeros</span><span class="p">),</span>
+                <span class="n">maxiters</span><span class="o">=</span><span class="n">maxiters</span><span class="p">,</span>
+                <span class="n">ddof</span><span class="o">=</span><span class="n">ddof</span><span class="p">,</span>
+                <span class="n">nkeep</span><span class="o">=</span><span class="n">nkeep</span><span class="p">,</span>
+                <span class="n">maxrej</span><span class="o">=</span><span class="n">maxrej</span><span class="p">,</span>
+                <span class="n">cenfunc</span><span class="o">=</span><span class="n">cenfunc</span><span class="p">,</span>
+                <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">gain</span><span class="o">=</span><span class="n">gain</span><span class="p">,</span>
+                <span class="n">rdnoise</span><span class="o">=</span><span class="n">rdnoise</span><span class="p">,</span>
+                <span class="n">snoise</span><span class="o">=</span><span class="n">snoise</span><span class="p">,</span>
+                <span class="n">irafmode</span><span class="o">=</span><span class="n">irafmode</span><span class="p">,</span>
+                <span class="n">full</span><span class="o">=</span><span class="kc">True</span>
+            <span class="p">)</span>
+            <span class="c1"># _mask is a subset of _mask_rej, so to extract pixels which</span>
+            <span class="c1"># are masked PURELY due to the rejection is:</span>
+            <span class="n">mask_rej</span> <span class="o">=</span> <span class="n">_mask_rej</span> <span class="o">^</span> <span class="n">_mask</span>
+        <span class="k">elif</span> <span class="n">reject</span> <span class="o">==</span> <span class="s1">&#39;pclip&#39;</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;reject not understood.&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">reject</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">mask_rej</span> <span class="o">=</span> <span class="n">_set_mask</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">low</span> <span class="o">=</span> <span class="n">bn</span><span class="o">.</span><span class="n">nanmin</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">upp</span> <span class="o">=</span> <span class="n">bn</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">nit</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">rejcode</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;reject not understood.&quot;</span><span class="p">)</span>
+
+    <span class="n">_mask</span> <span class="o">|=</span> <span class="n">mask_rej</span>
+
+    <span class="c1"># ----------------------------------------------------------------------- #</span>
+
+    <span class="c1"># TODO: add &quot;grow&quot; rejection here?</span>
+
+    <span class="c1"># == 03 - combine ======================================================= #</span>
+    <span class="c1"># Replace rejected / masked pixel to NaN and backup for debugging purpose.</span>
+    <span class="c1"># This is done to reduce memory (instead of doing _arr = arr.copy())</span>
+    <span class="c1"># backup_nan = arr[_mask]</span>
+    <span class="n">arr</span><span class="p">[</span><span class="n">_mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+    <span class="c1"># Combine and calc sigma</span>
+    <span class="n">comb</span> <span class="o">=</span> <span class="n">combfunc</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">full</span><span class="p">:</span>
+        <span class="n">std</span> <span class="o">=</span> <span class="n">bn</span><span class="o">.</span><span class="n">nanstd</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="n">ddof</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="c1"># Restore NaN-replaced pixels of arr for debugging purpose.</span>
+    <span class="c1"># arr[_mask] = backup_nan</span>
+    <span class="c1"># arr[mask_thresh] = backup_thresh_inmask</span>
+
+    <span class="k">if</span> <span class="n">full</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">comb</span><span class="p">,</span> <span class="n">std</span><span class="p">,</span> <span class="n">mask_rej</span><span class="p">,</span> <span class="n">mask_thresh</span><span class="p">,</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nit</span><span class="p">,</span> <span class="n">rejcode</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">comb</span></div>
+
+
+<span class="n">ndcombine</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="s1">&#39;&#39;&#39; Combines the given arr assuming no additional offsets.</span>
+
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+<span class="s1">    #. offsets is not implemented to ndcombine (only to fitscombine).</span>
+
+<span class="s1">    Parameters</span>
+<span class="s1">    ----------</span>
+<span class="s1">    arr : ndarray</span>
+<span class="s1">        The array to be combined along axis 0.</span>
+
+<span class="s1">    mask : ndarray, optional.</span>
+<span class="s1">        The mask of bad pixels. If given, it must satisfy</span>
+<span class="s1">        ``mask.shape[0]`` identical to the number of images.</span>
+
+<span class="s1">    copy : bool, optional.</span>
+<span class="s1">        Whether to copy the input array. Set to `True` if you want to</span>
+<span class="s1">        keep the original array unchanged. Otherwise, the original array</span>
+<span class="s1">        may be destroyed.</span>
+
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+
+<span class="s1">    Returns</span>
+<span class="s1">    -------</span>
+<span class="s1">    comb : ndarray</span>
+<span class="s1">        The combined array.</span>
+
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+
+<span class="s1">    </span><span class="si">{}</span><span class="s1"></span>
+<span class="s1">    &#39;&#39;&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">docstrings</span><span class="o">.</span><span class="n">NDCOMB_NOT_IMPLEMENTED</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
+               <span class="n">docstrings</span><span class="o">.</span><span class="n">OFFSETS_SHORT</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
+               <span class="n">docstrings</span><span class="o">.</span><span class="n">NDCOMB_PARAMETERS_COMMON</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
+               <span class="n">docstrings</span><span class="o">.</span><span class="n">NDCOMB_RETURNS_COMMON</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
+               <span class="n">docstrings</span><span class="o">.</span><span class="n">IMCOMBINE_LINK</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+               <span class="p">)</span>
+</pre></div>
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><h3>Page Contents</h3>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+<footer class="footer">
+  <p class="pull-right"> &nbsp;
+    <a href="#">Back to Top</a></p>
+  <p>
+    &copy; Copyright 2020-2020, Yoonsoo P. Bach.<br/>
+    Created using <a href="http://www.sphinx-doc.org/en/stable/">Sphinx</a> 3.1.2. &nbsp;
+    Last built 2020-07-30 14:42:10 (GMT+09:00). <br/>
+  </p>
+</footer>
+  </body>
+</html>
