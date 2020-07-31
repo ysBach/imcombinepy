@@ -5,6 +5,8 @@ import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
 from astropy.nddata import CCDData
+from astropy.table import Table
+from astropy.time import Time
 
 from .reject import sigclip_mask, ccdclip_mask
 from .util import (_get_combine_shape, _set_cenfunc, _set_combfunc,
@@ -74,6 +76,8 @@ def fitscombine(
         **kwargs
 ):
     if verbose:
+        _t = Time.now()
+        print(_t.iso)
         print("Organizing", end='... ')
 
     if (fpaths is not None) + (fpattern is not None) != 1:
@@ -84,6 +88,10 @@ def fitscombine(
     reject = _set_reject_name(reject)
     int_dtype = _set_int_dtype(ncombine)
 
+    if logfile is not None:
+        logfile = Path(logfile)
+        table_dict = dict(file=[], filesize=[])
+
     # == check if we should care about memory =============================== #
     # It usually takes < 1ms for hundreds of files
     # What we get here is the lower bound of the total memory used.
@@ -92,7 +100,11 @@ def fitscombine(
     # chop_load = False
     fsize_tot = 0
     for fpath in fpaths:
-        fsize_tot += Path(fpath).stat().st_size
+        _fsize = Path(fpath).stat().st_size
+        fsize_tot += _fsize
+        if logfile is not None:
+            table_dict['file'].append(fpath)
+            table_dict['filesize'].append(_fsize)
     # if fsize_tot > memlimit:
     #     chop_load = True
     # ----------------------------------------------------------------------- #
@@ -107,7 +119,7 @@ def fitscombine(
     if isinstance(scale, str):
         if scale.lower() in ["exp", "expos", "exposure", "exptime"]:
             extract_exptime = True
-            scale = np.ones(ncombine, dtype=dtype)
+            scales = np.ones(ncombine, dtype=dtype)
 
     if reject == 'ccdclip':
         extract_gain, gns = _set_gain_rdns(gain, ncombine, dtype=dtype)
@@ -159,7 +171,7 @@ def fitscombine(
                     imcmb_val.append('')
 
         if extract_exptime:
-            scale[i] = float(hdr[exposure_key])
+            scales[i] = float(hdr[exposure_key])
 
         if extract_gain:
             gns[i] = float(hdr[gain])  # gain is given as header key
@@ -235,8 +247,8 @@ def fitscombine(
     arr_full = np.nan*np.zeros(shape=(ncombine, *sh_comb), dtype=dtype)
     mask_full = np.zeros(shape=(ncombine, *sh_comb), dtype=bool)
     zeros = np.zeros(shape=ncombine)
-    scales = np.zeros(shape=ncombine)
-    weights = np.zeros(shape=ncombine)
+    scales = np.ones(shape=ncombine)
+    weights = np.ones(shape=ncombine)
 
     for i, (_fpath, _offset, _size) in enumerate(zip(fpaths,
                                                      offsets,
@@ -287,11 +299,14 @@ def fitscombine(
         # latter may contain too many NaNs due to offest shifting.
         # TODO: let get_zsw to get functionals for zsw, so _set_calc_zsw
         # will not be repeateded for every iteration.
-        _data_fake = np.array(_data[None, :])  # make a fake (N+1)-D array
+        if extract_exptime:
+            _scale = scales[i]
+        else:  # e.g., "med"
+            _scale = scale
         _z, _s, _w = get_zsw(
-            arr=_data_fake,
+            arr=np.array(_data[None, :]),  # make a fake (N+1)-D array
             zero=zero,
-            scale=scale,
+            scale=_scale,
             weight=weight,
             zero_kw=zero_kw,
             scale_kw=scale_kw,
@@ -310,7 +325,7 @@ def fitscombine(
 
         # process = psutil.Process(os.getpid())
         # print("3: ", process.memory_info().rss/1.e+9)  # in bytes
-        del ccd, _data, _mask, _data_fake
+        del ccd, _data, _mask
         # process = psutil.Process(os.getpid())
         # print("4: ", process.memory_info().rss/1.e+9)  # in bytes
 
@@ -408,11 +423,28 @@ def fitscombine(
     if output_rejcode is not None:
         write2fits(rejcode, hdr0, output_rejcode, return_ccd=False, **kwargs)
 
-    if verbose:
-        print("Done.")
-
     # == Return memroy... =================================================== #
     del hdr0, arr_full, mask_full
+
+    # == Write logfile ====================================================== #
+    if logfile is not None:
+        # Use astropy table rather than import pandas
+        for name in ['scales', 'zeros', 'weights']:
+            table_dict[name] = eval(f'list({name})')
+
+        table = Table(table_dict)
+        table['gains'] = gns
+        table['readnoises'] = rds
+        table['snoises'] = sns
+        # NOTE: the indexing in python is [z, y, x] order!!
+        for i in range(ndim, 0, -1):
+            table[f'offset{i}'] = offsets[:, ndim - i]
+        table.write(logfile, format='csv')
+
+    if verbose:
+        _t2 = Time.now()
+        print("Done.")
+        print(_t2.iso, f"(dt = {(_t2 - _t).sec})")
 
     # == Return ============================================================= #
     if full:
