@@ -11,15 +11,14 @@ from astropy.wcs import WCS
 from .numpy_util import lmedian, nanlmedian
 
 __all__ = [
-    'load_ccd', 'filelist', 'write2fits', 'update_hdr',
+    'load_ccd', 'filelist', 'write2fits', 'update_hdr', 'add_to_header',
     'do_zs', 'get_zsw',
     '_get_combine_shape', '_set_int_dtype', '_get_dtype_limits',
     '_setup_reject',
     '_set_mask', '_set_sigma', '_set_keeprej', '_set_minmax',
     '_set_thresh_mask', '_set_gain_rdns',
     '_set_cenfunc', '_set_combfunc',
-    '_set_reject_name', '_set_calc_zsw',
-    "slice_from_string"
+    '_set_reject_name', "slice_from_string"
 ]
 
 
@@ -95,51 +94,117 @@ def do_zs(arr, zeros, scales, copy=False):
 
 def get_zsw(arr, zero, scale, weight, zero_kw, scale_kw,
             zero_to_0th, scale_to_0th, zero_section, scale_section):
-    if zero is None:
-        zero = np.zeros(arr.shape[0])
-    if scale is None:
-        scale = np.ones(arr.shape[0])
-    if weight is None:
-        weight = np.ones(arr.shape[0])
+    # TODO: add sigma-clipped mean, med, std as scale, zero, or weight.
+    def _nanfun2nonnan(fun):
+        '''
+        Returns
+        -------
+        nonnan_function: The function without NaN policy
+        check_isfinite: Whether the ``isfinite`` must be tested.
+        '''
+        if fun == bn.nanmean:
+            return np.mean
+        elif fun == bn.nanmedian:
+            # There IS bn.median, but that doesn't accept tuple axis...
+            return np.median
+        elif fun == bn.nansum:
+            return np.sum
+        else:
+            return fun
 
-    calc_z, zeros, fun_z = _set_calc_zsw(arr, zero, zero_kw)
-    calc_s, scales, fun_s = _set_calc_zsw(arr, scale, scale_kw)
-    calc_w, weights, fun_w = _set_calc_zsw(arr, weight)
+    def _set_calc_zsw(arr, zero_scale_weight, zsw_kw={}):
+        if isinstance(zero_scale_weight, str):
+            zswstr = zero_scale_weight.lower()
+            calc_zsw = True
+            zsw = []
+            if zswstr in ['avg', 'average', 'mean']:
+                calcfun = bn.nanmean
+            elif zswstr in ['med', 'medi', 'median']:
+                calcfun = bn.nanmedian
+            elif zswstr in ['avg_sc', 'average_sc', 'mean_sc']:
+                _ = zsw_kw.pop('axis', None)  # if exist ``axis``, remove it.
+                calcfun = lambda x, zsw_kw: sigma_clipped_stats(x, **zsw_kw)[0]
+            elif zswstr in ['med_sc', 'medi_sc', 'median_sc']:
+                _ = zsw_kw.pop('axis', None)  # if exist ``axis``, remove it.
+                calcfun = lambda x, zsw_kw: sigma_clipped_stats(x, **zsw_kw)[1]
+            else:
+                raise ValueError(
+                    f"zero/scale/weight ({zero_scale_weight}) not understood")
+
+        else:
+            zsw = np.array(zero_scale_weight)
+            if zsw.size == arr.shape[0]:
+                zsw = zsw.flatten()
+            else:
+                raise ValueError(
+                    "If scale/zero/weight are array-like, they must be of "
+                    + "size = arr.shape[0] (number of images to combine)."
+                )
+            calc_zsw = False
+            zsw = np.array(zero_scale_weight)
+            calcfun = None
+        return calc_zsw, zsw, calcfun
+
+    def _calc_zsw(fun, arr, axis, section=None):
+        fun_simple = _nanfun2nonnan(fun)
+        if section is not None:
+            sl = slice_from_string(section, fits_convention=True)
+        else:
+            sl = [slice(None)]*(arr.ndim - 1)
+
+        try:
+            # If converted to numpy, this must work without error:
+            zsw = fun_simple(arr[(slice(None), *sl)], axis=simple_axis)
+            redo = ~np.all(np.isfinite(zsw))
+        except TypeError:  # does not accept tuple axis
+            redo = True
+
+        if redo:
+            zsw = []
+            for i in range(arr.shape[0]):
+                zsw.append(fun(arr[(i, *sl)]))
+
+        return np.array(zsw)
+
+    if zero is None:
+        zeros = np.zeros(arr.shape[0])
+        calc_z = False
+        fun_z = None
+    else:
+        calc_z, zeros, fun_z = _set_calc_zsw(arr, zero, zero_kw)
+
+    if scale is None:
+        scales = np.ones(arr.shape[0])
+        calc_s = False
+        fun_s = None
+    else:
+        calc_s, scales, fun_s = _set_calc_zsw(arr, scale, scale_kw)
+
+    if weight is None:
+        weights = np.ones(arr.shape[0])
+        calc_w = False
+        fun_w = None
+    else:
+        calc_w, weights, fun_w = _set_calc_zsw(arr, weight)
+
+    simple_axis = tuple(np.arange(arr.ndim)[1:])
 
     if calc_z:
-        if zero_section is not None:
-            sl_z = slice_from_string(zero_section, fits_convention=True)
-            for i in range(arr.shape[0]):
-                zeros.append(fun_z(arr[(i, *sl_z)]))
-        else:
-            for i in range(arr.shape[0]):
-                zeros.append(fun_z(arr[i, ]))
-        zeros = np.array(zeros)
+        zeros = _calc_zsw(fun_z, arr, simple_axis, section=zero_section)
 
     if calc_s:
-        if fun_s == fun_z:
+        if fun_s is not None and fun_z is not None and fun_s == fun_z:
             scales = zeros.copy()
         else:
-            if scale_section is not None:
-                sl_s = slice_from_string(scale_section, fits_convention=True)
-                for i in range(arr.shape[0]):
-                    scales.append(fun_s(arr[(i, *sl_s)]))
-            else:
-                for i in range(arr.shape[0]):
-                    # scales.append(1)  OK
-                    # scales.append(fun_s(1))  OK
-                    scales.append(fun_s(arr[i, ]))  # not OK
-            scales = np.array(scales)
+            scales = _calc_zsw(fun_s, arr, simple_axis, section=scale_section)
 
     if calc_w:  # TODO: Needs update to match IRAF's...
-        if fun_w == fun_s:
+        if fun_w is not None and fun_s is not None and fun_w == fun_s:
             weights = scales.copy()
-        elif fun_w == fun_z:
+        elif fun_w is not None and fun_z is not None and fun_w == fun_z:
             weights = zeros.copy()
         else:
-            for i in range(arr.shape[0]):
-                weight.append(fun_w(arr[i, ]))
-            weights = np.array(weights)
+            weights = _calc_zsw(fun_w, arr, simple_axis, section=scale_section)
 
     if zero_to_0th:
         zeros -= zeros[0]
@@ -148,40 +213,6 @@ def get_zsw(arr, zero, scale, weight, zero_kw, scale_kw,
         scales /= scales[0]  # So that normalize 1.000 for the 0-th image.
 
     return zeros, scales, weights
-
-
-# TODO: add sigma-clipped mean, med, std as scale, zero, or weight.
-def _set_calc_zsw(arr, zero_scale_weight, zsw_kw={}):
-    if isinstance(zero_scale_weight, str):
-        zswstr = zero_scale_weight.lower()
-        calc_zsw = True
-        zsw = []
-        if zswstr in ['avg', 'average', 'mean']:
-            calcfun = bn.nanmean
-        elif zswstr in ['med', 'medi', 'median']:
-            calcfun = bn.nanmedian
-        elif zswstr in ['avg_sc', 'average_sc', 'mean_sc']:
-            _ = zsw_kw.pop('axis', None)  # if exist ``axis``, remove it.
-            calcfun = lambda x, zsw_kw: sigma_clipped_stats(x, **zsw_kw)[0]
-        elif zswstr in ['med_sc', 'medi_sc', 'median_sc']:
-            _ = zsw_kw.pop('axis', None)  # if exist ``axis``, remove it.
-            calcfun = lambda x, zsw_kw: sigma_clipped_stats(x, **zsw_kw)[1]
-        else:
-            raise ValueError(
-                f"zero, scale, weight ({zero_scale_weight}) not understood")
-    else:
-        zsw = np.array(zero_scale_weight)
-        if zsw.size == arr.shape[0]:
-            zsw = zsw.flatten()
-        else:
-            raise ValueError(
-                "If scale/zero/weight are array-like, they must be of size "
-                + "identical to arr.shape[0] (number of images to combine)."
-            )
-        calc_zsw = False
-        zsw = np.array(zero_scale_weight)
-        calcfun = None
-    return calc_zsw, zsw, calcfun
 
 
 def _setup_reject(arr, mask, nkeep, maxrej, cenfunc):
@@ -261,7 +292,7 @@ def update_hdr(header, ncombine, imcmb_key, imcmb_val,
     if imcmb_key != '':
         header["IMCMBKEY"] = (
             imcmb_key,
-            f"Key used in IMCMBiii ('$I': filepath)"
+            "Key used in IMCMBiii ('$I': filepath)"
         )
         for i in range(min(999, len(imcmb_val))):
             header[f"IMCMB{i+1:03d}"] = imcmb_val[i]
@@ -279,6 +310,103 @@ def update_hdr(header, ncombine, imcmb_key, imcmb_val,
                value=Time(Time.now(), precision=0).isot,
                comment="UT of last modification of this FITS file",
                after=f"NAXIS{header['NAXIS']}")
+
+
+def str_now(precision=3, fmt="{:.>72s}", t_ref=None,
+            dt_fmt="(dt = {:.3f} s)", return_time=False):
+    ''' Get stringfied time now in UT ISOT format.
+    Parameters
+    ----------
+    precision : int, optional.
+        The precision of the isot format time.
+    fmt : str, optional.
+        The Python 3 format string to format the time.
+        Examples:
+          * ``"{:s}"``: plain time ``2020-01-01T01:01:01.23``
+          * ``"({:s})"``: plain time in parentheses
+            ``(2020-01-01T01:01:01.23)``
+          * ``"{:_^72s}"``: center align, filling with ``_``.
+    t_ref : Time, optional.
+        The reference time. If not ``None``, delta time is calculated.
+    dt_fmt : str, optional.
+        The Python 3 format string to format the delta time.
+    return_time : bool, optional.
+        Whether to return the time at the start of this function and the
+        delta time (``dt``), as well as the time information string. If
+        ``t_ref`` is ``None``, ``dt`` is automatically set to ``None``.
+    '''
+    now = Time(Time.now(), precision=precision)
+    timestr = now.isot
+    if t_ref is not None:
+        dt = (now - Time(t_ref)).sec  # float in seconds unit
+        timestr = dt_fmt.format(dt) + " " + timestr
+    else:
+        dt = None
+
+    if return_time:
+        return fmt.format(timestr), now, dt
+    else:
+        return fmt.format(timestr)
+
+
+def add_to_header(header, histcomm, s, precision=3,
+                  fmt="{:.>72s}", t_ref=None, dt_fmt="(dt = {:.3f} s)",
+                  verbose=False):
+    ''' Automatically add timestamp as well as history string
+    Parameters
+    ----------
+    header : Header
+        The header.
+    histcomm : str in ['h', 'hist', 'history', 'c', 'comm', 'comment']
+        Whether to add history or comment.
+    s : str or list of str
+        The string to add as history or comment.
+    precision : int, optional.
+        The precision of the isot format time.
+    fmt : str, None, optional.
+        The Python 3 format string to format the time in the header.
+        If ``None``, the timestamp string will not be added.
+        Examples:
+          * ``"{:s}"``: plain time ``2020-01-01T01:01:01.23``
+          * ``"({:s})"``: plain time in parentheses
+            ``(2020-01-01T01:01:01.23)``
+          * ``"{:_^72s}"``: center align, filling with ``_``.
+    t_ref : Time
+        The reference time. If not ``None``, delta time is calculated.
+    dt_fmt : str, optional.
+        The Python 3 format string to format the delta time in the
+        header.
+    verbose : bool, optional.
+        Whether to print the same information on the output terminal.
+    verbose_fmt : str, optional.
+        The Python 3 format string to format the time in the terminal.
+    '''
+    if isinstance(s, str):
+        s = [s]
+
+    if histcomm.lower() in ['h', 'hist', 'history']:
+        for _s in s:
+            header.add_history(_s)
+            if verbose:
+                print(f"HISTORY {_s}")
+        if fmt is not None:
+            timestr = str_now(precision=precision, fmt=fmt,
+                              t_ref=t_ref, dt_fmt=dt_fmt)
+            header.add_history(timestr)
+            if verbose:
+                print(f"HISTORY {timestr}")
+
+    elif histcomm.lower() in ['c', 'comm', 'comment']:
+        for _s in s:
+            header.add_comment(s)
+            if verbose:
+                print(f"COMMENT {_s}")
+        if fmt is not None:
+            timestr = str_now(precision=precision, fmt=fmt,
+                              t_ref=t_ref, dt_fmt=dt_fmt)
+            header.add_comment(timestr)
+            if verbose:
+                print(f"COMMENT {timestr}")
 
 
 def _calculate_step_sizes(x_size, y_size, num_chunks):

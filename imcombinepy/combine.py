@@ -12,7 +12,7 @@ from .reject import sigclip_mask, ccdclip_mask
 from .util import (_get_combine_shape, _set_cenfunc, _set_combfunc,
                    _set_gain_rdns, _set_int_dtype, _set_keeprej, _set_mask,
                    _set_reject_name, _set_sigma, _set_thresh_mask, do_zs,
-                   filelist, get_zsw, update_hdr, write2fits, load_ccd)
+                   filelist, get_zsw, update_hdr, write2fits, load_ccd, add_to_header)
 from . import docstrings
 
 __all__ = ["fitscombine", "ndcombine"]
@@ -76,8 +76,8 @@ def fitscombine(
         **kwargs
 ):
     if verbose:
-        _t = Time.now()
-        print(_t.iso)
+        _t1 = Time.now()
+        print(_t1.iso)
         print("Organizing", end='... ')
 
     if (fpaths is not None) + (fpattern is not None) != 1:
@@ -244,12 +244,15 @@ def fitscombine(
 
     # == Setup offset-ed array ============================================== #
     # NOTE: Using NaN does not set array with dtype of int... Any solution?
+    if verbose:
+        print("Loading, calculating offsets with zero/scale", end='...')
     arr_full = np.nan*np.zeros(shape=(ncombine, *sh_comb), dtype=dtype)
     mask_full = np.zeros(shape=(ncombine, *sh_comb), dtype=bool)
     zeros = np.zeros(shape=ncombine)
     scales = np.ones(shape=ncombine)
     weights = np.ones(shape=ncombine)
 
+    _t = Time.now()
     for i, (_fpath, _offset, _size) in enumerate(zip(fpaths,
                                                      offsets,
                                                      sizes)):
@@ -329,12 +332,17 @@ def fitscombine(
         # process = psutil.Process(os.getpid())
         # print("4: ", process.memory_info().rss/1.e+9)  # in bytes
 
+    add_to_header(hdr0, 'h', t_ref=_t, verbose=verbose,
+                  s=f"Loaded {ncombine} FITS, get zero, scale, weights")
     if verbose:
-        print("All FITS loaded, rejection & combination starts", end='... ')
+        print(f"Done (ncombine = {ncombine}).")
 
     # ----------------------------------------------------------------------- #
 
     # == Combine with rejection! ============================================ #
+    if verbose:
+        print("Rejection and combination", end='...')
+    _t = Time.now()
     comb, std, mask_rej, mask_thresh, low, upp, nit, rejcode = ndcombine(
         arr=arr_full,
         mask=mask_full,
@@ -367,11 +375,6 @@ def fitscombine(
     std = std.astype(dtype)
     low = low.astype(dtype)
     upp = upp.astype(dtype)
-    # ----------------------------------------------------------------------- #
-
-    if verbose:
-        print("Done.")
-        print("Making FITS", end="... ")
 
     mask_total = mask_full | mask_thresh | mask_rej
 
@@ -396,7 +399,13 @@ def fitscombine(
     except (KeyError, IndexError):
         unit = 'adu'
 
+    add_to_header(hdr0, 'h', t_ref=_t, verbose=verbose,
+                  s="Rejection and combination done")
+
     comb = CCDData(data=comb, header=hdr0, unit=unit)
+
+    if verbose:
+        print("Writing output FITS", end="... ")
 
     # == Save FITS files ==================================================== #
     if output is not None:
@@ -423,11 +432,16 @@ def fitscombine(
     if output_rejcode is not None:
         write2fits(rejcode, hdr0, output_rejcode, return_ccd=False, **kwargs)
 
+    if verbose:
+        print("Done.")
+
     # == Return memroy... =================================================== #
     del hdr0, arr_full, mask_full
 
     # == Write logfile ====================================================== #
     if logfile is not None:
+        if verbose:
+            print("Writing summary table", end='...')
         # Use astropy table rather than import pandas
         for name in ['scales', 'zeros', 'weights']:
             table_dict[name] = eval(f'list({name})')
@@ -440,11 +454,13 @@ def fitscombine(
         for i in range(ndim, 0, -1):
             table[f'offset{i}'] = offsets[:, ndim - i]
         table.write(logfile, format='csv')
+        if verbose:
+            print("Done.")
 
     if verbose:
         _t2 = Time.now()
-        print("Done.")
-        print(_t2.iso, f"(dt = {(_t2 - _t).sec})")
+        print("Finished.")
+        print(_t2.iso, f"(dt = {(_t2 - _t1).sec:.3} sec)")
 
     # == Return ============================================================= #
     if full:
