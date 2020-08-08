@@ -18,8 +18,8 @@ $ git clone https://github.com/ysBach/imcombinepy.git && cd imcombinepy $$ pytho
 * bottleneck (tested only with >= 1.3)
 
 **RECOMMENDED**: [fitsio](https://github.com/esheldon/fitsio)
-  - This is strongly recommended if you want to combine *many images* (order of 100 images). The file I/O part gets **~ 30 times quicker than astropy**.
-  - My experience is that when I combine 640 images, loading took 15s when astropy is used (most time is spent on parsing header; it is not improved even if I use ``fits.getdata``.), while it took ~ 0.5s when fitsio is used (since header of all files are unnecessary, I only did ``fitsio.FITS(file)[ext].read()``).
+  - This is strongly recommended if you want to combine *many images* (order of 100 images). The file I/O part gets **30 times quicker than astropy**.
+  - My experience is that when I combine 640 images of ~ 150 kB, loading took 15s when astropy is used (most time is spent on parsing header; it is not improved even if I use ``fits.getdata``.), while it took ~ 0.5s when fitsio is used (since header of all files are unnecessary, I only did ``fitsio.FITS(file)[ext].read()``). The rejection and combination took 15s. Therefore, it's a huge computational gain!
 
 ## Usage
 
