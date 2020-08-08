@@ -109,20 +109,21 @@ def _iter_rej(
 
     if irafmode:
         n_minimum = max(nkeep, ncombine - maxrej)
-        try:
-            resid = np.abs(_arr - cen)
-        except UnboundLocalError:  # cen undefined when maxiters=0
-            resid = np.abs(_arr - cenfunc(_arr, axis=0))
-        # need this cuz bn.argpartition cannot handle NaN:
-        resid[np.isnan(resid)] = _get_dtype_limits(resid.dtype)[1]
-        # ^ replace with max of dtype
-        # after this, resid is guaranteed to have **NO** NaN values.
+        if n_minimum > 0:
+            try:
+                resid = np.abs(_arr - cen)
+            except UnboundLocalError:  # cen undefined when maxiters=0
+                resid = np.abs(_arr - cenfunc(_arr, axis=0))
+            # need this cuz bn.argpartition cannot handle NaN:
+            resid[np.isnan(resid)] = _get_dtype_limits(resid.dtype)[1]
+            # ^ replace with max of dtype
+            # after this, resid is guaranteed to have **NO** NaN values.
 
-        resid_cut = np.max(
-            bn.partition(resid, n_minimum, axis=0)[:n_minimum, ],
-            axis=0
-        )
-        mask[resid <= resid_cut] = False
+            resid_cut = np.max(
+                bn.partition(resid, n_minimum, axis=0)[:n_minimum, ],
+                axis=0
+            )
+            mask[resid <= resid_cut] = False
 
     # Note the mask returned here is mask from rejection PROPAGATED with
     # the input mask. So to extract the pixels masked PURELY from
