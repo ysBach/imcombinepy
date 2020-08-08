@@ -8,6 +8,12 @@ from astropy.nddata import CCDData
 from astropy.table import Table
 from astropy.time import Time
 
+try:
+    import fitsio
+    HAS_FITSIO = True
+except ImportError:
+    HAS_FITSIO = False
+
 from .reject import sigclip_mask, ccdclip_mask
 from .util import (_get_combine_shape, _set_cenfunc, _set_combfunc,
                    _set_gain_rdns, _set_int_dtype, _set_keeprej, _set_mask,
@@ -73,6 +79,7 @@ def fitscombine(
         output=None, output_mask=None, output_nrej=None,
         output_std=None, output_low=None, output_upp=None,
         output_rejcode=None, return_dict=False,
+        use_cfitsio=True,
         **kwargs
 ):
     if verbose:
@@ -87,6 +94,7 @@ def fitscombine(
     ncombine = len(fpaths)
     reject = _set_reject_name(reject)
     int_dtype = _set_int_dtype(ncombine)
+    use_cfitsio = use_cfitsio and HAS_FITSIO
 
     if logfile is not None:
         logfile = Path(logfile)
@@ -245,7 +253,7 @@ def fitscombine(
     # == Setup offset-ed array ============================================== #
     # NOTE: Using NaN does not set array with dtype of int... Any solution?
     if verbose:
-        print("Loading, calculating offsets with zero/scale", end='...')
+        print("Loading, calculating offsets with zero/scale")
     arr_full = np.nan*np.zeros(shape=(ncombine, *sh_comb), dtype=dtype)
     mask_full = np.zeros(shape=(ncombine, *sh_comb), dtype=bool)
     zeros = np.zeros(shape=ncombine)
@@ -274,14 +282,40 @@ def fitscombine(
         # process = psutil.Process(os.getpid())
         # print("1: ", process.memory_info().rss/1.e+9)  # in bytes
 
-        ccd = load_ccd(_fpath, extension=ext, memmap=False)
-        _data = ccd.data
+        if use_cfitsio:
+            hdul = fitsio.FITS(_fpath)
+            if len(hdul) > 1:
+                for i, h in enumerate(hdul):
+                    try:
+                        hasmask = h.read_header()["XTENSION"] == 'MASK'
+                        mask_idx = i
+                        break
+                    except KeyError:
+                        hasmask = False
+            else:
+                hasmask = False
 
-        # process = psutil.Process(os.getpid())
-        # print("1-1: ", process.memory_info().rss/1.e+9)  # in bytes
-        _mask = ccd.mask
-        # process = psutil.Process(os.getpid())
-        # print("1-2: ", process.memory_info().rss/1.e+9)  # in bytes
+            if str(ext).isnumeric():
+                _data = hdul[ext].read()
+            else:
+                raise ValueError(
+                    "Currently ext in str is not supported when "
+                    + "use_cfitsio=True and you have fitsio.")
+
+            if hasmask:
+                _mask = hdul[mask_idx].read()
+            else:
+                _mask = None
+
+        else:
+            ccd = load_ccd(_fpath, extension=ext, memmap=False)
+            _data = ccd.data
+
+            # process = psutil.Process(os.getpid())
+            # print("1-1: ", process.memory_info().rss/1.e+9)  # in bytes
+            _mask = ccd.mask
+            # process = psutil.Process(os.getpid())
+            # print("1-2: ", process.memory_info().rss/1.e+9)  # in bytes
 
         if _mask is None:
             _mask = np.zeros(_data.shape, dtype=bool)
@@ -328,20 +362,21 @@ def fitscombine(
 
         # process = psutil.Process(os.getpid())
         # print("3: ", process.memory_info().rss/1.e+9)  # in bytes
-        del ccd, _data, _mask
+        if use_cfitsio:
+            hdul.close()
+        else:
+            del ccd, _data, _mask
         # process = psutil.Process(os.getpid())
         # print("4: ", process.memory_info().rss/1.e+9)  # in bytes
 
     add_to_header(hdr0, 'h', t_ref=_t, verbose=verbose,
-                  s=f"Loaded {ncombine} FITS, get zero, scale, weights")
-    if verbose:
-        print(f"Done (ncombine = {ncombine}).")
+                  s=f"Loaded {ncombine} FITS, calculated zero, scale, weights")
 
     # ----------------------------------------------------------------------- #
 
     # == Combine with rejection! ============================================ #
     if verbose:
-        print("Rejection and combination", end='...')
+        print("Rejection and combination")
     _t = Time.now()
     comb, std, mask_rej, mask_thresh, low, upp, nit, rejcode = ndcombine(
         arr=arr_full,
@@ -409,7 +444,7 @@ def fitscombine(
 
     # == Save FITS files ==================================================== #
     if output is not None:
-        comb.writeto(output, **kwargs)
+        comb.write(output, **kwargs)
 
     if output_std is not None:
         write2fits(std, hdr0, output_std, return_ccd=False, **kwargs)
@@ -460,7 +495,7 @@ def fitscombine(
     if verbose:
         _t2 = Time.now()
         print("Finished.")
-        print(_t2.iso, f"(dt = {(_t2 - _t1).sec:.3} sec)")
+        print(_t2.iso, f"(TOTAL dt = {(_t2 - _t1).sec:5.3} sec)")
 
     # == Return ============================================================= #
     if full:
