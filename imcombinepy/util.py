@@ -1,3 +1,4 @@
+import warnings
 import glob
 
 import bottleneck as bn
@@ -5,14 +6,14 @@ import numpy as np
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats
 from astropy.time import Time
-from astropy.nddata import CCDData
+from astropy.nddata import CCDData, StdDevUncertainty, VarianceUncertainty
 from astropy.wcs import WCS
 
 from .numpy_util import lmedian, nanlmedian
 
 __all__ = [
-    'load_ccd', 'filelist', 'write2fits', 'update_hdr', 'add_to_header',
-    'do_zs', 'get_zsw',
+    'load_fits', 'load_ccd', 'filelist', 'write2fits', 'update_hdr',
+    'add_to_header', 'do_zs', 'get_zsw',
     '_get_combine_shape', '_set_int_dtype', '_get_dtype_limits',
     '_setup_reject',
     '_set_mask', '_set_sigma', '_set_keeprej', '_set_minmax',
@@ -20,6 +21,85 @@ __all__ = [
     '_set_cenfunc', '_set_combfunc',
     '_set_reject_name', "slice_from_string"
 ]
+
+
+def load_fits(_fpath, ext=0, ext_uncertainty=None, ext_mask=None,
+              uncertainty_type='stddev', use_cfitsio=True):
+    ''' Load FITS file using either fitsio or load_ccd.
+
+    Returns
+    -------
+    _data : ndarray
+        The data (from ``ext``).
+
+    _var : ndarray or `None`
+        The variance array (from ``ext_uncertainty``). It is **NOT**
+        astropy's NDData format.
+
+    _mask : ndarray
+        The mask array (from ``ext_mask``). If no mask extension is
+        found, an ndarray with identical shape to ``_data`` filled with
+        `False` will be returned, **NOT** `None`.
+    '''
+    if use_cfitsio:
+        import fitsio
+
+        hdul = fitsio.FITS(_fpath)
+        if str(ext).isnumeric():
+            _data = hdul[ext].read()
+        else:
+            raise ValueError(
+                "Currently ext in str is not supported "
+                + "with fitsio. Try integer or use_cfitsio=False.")
+
+        if ext_uncertainty is not None:
+            if str(ext_uncertainty).isnumeric():
+                _var = hdul[ext_uncertainty].read()
+                if uncertainty_type in ['stddev', 'stdev', 'std']:
+                    _var = _var**2
+                elif uncertainty_type not in ['var', 'vari', 'variance']:
+                    raise ValueError("uncertainty_type not understood.")
+            else:
+                raise ValueError(
+                    "Currently ext_uncertainty in str is not supported "
+                    + "wwith fitsio. Try integer or use_cfitsio=False.")
+        else:
+            _var = None
+
+        if ext_mask is not None:
+            if str(ext_mask).isnumeric():
+                _mask = hdul[ext_mask].read()
+            else:
+                raise ValueError(
+                    "Currently ext_mask in str is not supported "
+                    + "with fitsio. Try integer or use_cfitsio=False.")
+        else:
+            _mask = None
+
+    else:
+        ccd = load_ccd(_fpath, extension=ext, memmap=False)
+        _data = ccd.data
+        _mask = ccd.mask
+        if ccd.uncertainty is None:
+            _var = None
+        elif isinstance(ccd.uncertainty, StdDevUncertainty):
+            _var = ccd.uncertainty.array**2
+        elif isinstance(ccd.uncertainty, VarianceUncertainty):
+            _var = ccd.uncertainty.array
+        else:
+            raise ValueError(
+                f"CCDData.read({_fpath}) gave a strange uncertainty.."
+            )
+
+    if _mask is None:
+        _mask = np.zeros(_data.shape, dtype=bool)
+
+    if use_cfitsio:
+        hdul.close()
+    else:
+        del ccd, _data, _mask
+
+    return _data, _var, _mask
 
 
 # FIXME: Remove it in the future.
