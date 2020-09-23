@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 
 import bottleneck as bn
@@ -13,12 +14,19 @@ try:
     HAS_FITSIO = True
 except ImportError:
     HAS_FITSIO = False
+    warnings.warn(
+        "fitsio is not installed (https://github.com/esheldon/fitsio)."
+        + "If installed, the combine gets significantly faster when "
+        + "combining hundreds of FITS, without using uncertainty and/or "
+        + "masks, as header-parsing is skipped."
+    )
 
 from .reject import sigclip_mask, ccdclip_mask
 from .util import (_get_combine_shape, _set_cenfunc, _set_combfunc,
                    _set_gain_rdns, _set_int_dtype, _set_keeprej, _set_mask,
                    _set_reject_name, _set_sigma, _set_thresh_mask, do_zs,
-                   filelist, get_zsw, update_hdr, write2fits, load_ccd, add_to_header)
+                   filelist, get_zsw, update_hdr, write2fits, load_ccd,
+                   add_to_header, load_fits)
 from . import docstrings
 
 __all__ = ["fitscombine", "ndcombine"]
@@ -52,6 +60,7 @@ lsigma    , hsigma     : sigma uple
 
 def fitscombine(
         fpaths=None, fpattern=None, mask=None, ext=0,
+        ext_uncertainty=None, uncertainty_type='stddev', ext_mask=None,
         fits_section=None,
         blank=np.nan,
         offsets=None,
@@ -94,7 +103,7 @@ def fitscombine(
     ncombine = len(fpaths)
     reject = _set_reject_name(reject)
     int_dtype = _set_int_dtype(ncombine)
-    use_cfitsio = use_cfitsio and HAS_FITSIO
+    use_cfitsio = use_cfitsio and HAS_FITSIO  # <--
 
     if logfile is not None:
         logfile = Path(logfile)
@@ -254,6 +263,10 @@ def fitscombine(
     # NOTE: Using NaN does not set array with dtype of int... Any solution?
     if verbose:
         print("Loading, calculating offsets with zero/scale")
+
+    if ext_uncertainty is not None:
+        var_full = np.nan*np.zeros(shape=(ncombine, *sh_comb), dtype=dtype)
+
     arr_full = np.nan*np.zeros(shape=(ncombine, *sh_comb), dtype=dtype)
     mask_full = np.zeros(shape=(ncombine, *sh_comb), dtype=bool)
     zeros = np.zeros(shape=ncombine)
@@ -278,50 +291,13 @@ def fitscombine(
         for offset_j, size_j in zip(_offset, _size):
             slices.append(slice(offset_j, offset_j + size_j, None))
 
-        # -- Set mask ------------------------------------------------------- #
+        # -- Load data ------------------------------------------------------ #
         # process = psutil.Process(os.getpid())
         # print("1: ", process.memory_info().rss/1.e+9)  # in bytes
 
-        if use_cfitsio:
-            hdul = fitsio.FITS(_fpath)
-            if len(hdul) > 1:
-                for i, h in enumerate(hdul):
-                    try:
-                        hasmask = h.read_header()["XTENSION"] == 'MASK'
-                        mask_idx = i
-                        break
-                    except KeyError:
-                        hasmask = False
-            else:
-                hasmask = False
-
-            if str(ext).isnumeric():
-                _data = hdul[ext].read()
-            else:
-                raise ValueError(
-                    "Currently ext in str is not supported when "
-                    + "use_cfitsio=True and you have fitsio.")
-
-            if hasmask:
-                _mask = hdul[mask_idx].read()
-            else:
-                _mask = None
-
-        else:
-            ccd = load_ccd(_fpath, extension=ext, memmap=False)
-            _data = ccd.data
-
-            # process = psutil.Process(os.getpid())
-            # print("1-1: ", process.memory_info().rss/1.e+9)  # in bytes
-            _mask = ccd.mask
-            # process = psutil.Process(os.getpid())
-            # print("1-2: ", process.memory_info().rss/1.e+9)  # in bytes
-
-        if _mask is None:
-            _mask = np.zeros(_data.shape, dtype=bool)
-        # process = psutil.Process(os.getpid())
-        # print("1-3: ", process.memory_info().rss/1.e+9)  # in bytes
-
+        _data, _unc, _mask = load_fits(_fpath, ext=ext, ext_mask=ext_mask,
+                                       ext_uncertainty=ext_uncertainty,
+                                       use_cfitsio=use_cfitsio)
         if mask is not None:
             _mask |= mask[i, ]
 
@@ -359,15 +335,8 @@ def fitscombine(
         # -- Insertion -------------------------------------------------- #
         arr_full[slices] = _data
         mask_full[slices] = _mask
-
-        # process = psutil.Process(os.getpid())
-        # print("3: ", process.memory_info().rss/1.e+9)  # in bytes
-        if use_cfitsio:
-            hdul.close()
-        else:
-            del ccd, _data, _mask
-        # process = psutil.Process(os.getpid())
-        # print("4: ", process.memory_info().rss/1.e+9)  # in bytes
+        if _unc is not None:
+            var_full[slices] = _unc
 
     add_to_header(hdr0, 'h', t_ref=_t, verbose=verbose,
                   s=f"Loaded {ncombine} FITS, calculated zero, scale, weights")
