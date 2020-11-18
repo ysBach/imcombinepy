@@ -30,6 +30,20 @@ def _iter_rej(
         The representative scaling and zeroing value to estimate the
         error-bar for ``ccdclip=True``.
     """
+    def __calc_censtd(_arr):
+        # most are defined in upper _iter_rej function
+        cen = cenfunc(_arr, axis=0)
+        if ccdclip:  # use abs(pix value) to avoid NaN from negative pixels.
+            std = np.sqrt(
+                ((1 + snoise_ref)*np.abs(cen + zero_ref)*scale_ref)
+                + rdnoise_ref**2
+            )
+            # restore zeroing & scaling ; then add rdnoise
+        else:
+            std = bn.nanstd(_arr, axis=0, ddof=ddof)
+
+        return cen, std
+
     # General setup
     _arr, _masks, keeprej, cenfunc, _nvals, lowupp = _setup_reject(
         arr=arr, mask=mask, nkeep=nkeep, maxrej=maxrej, cenfunc=cenfunc
@@ -39,64 +53,98 @@ def _iter_rej(
     nit, ncombine, n_finite_old = _nvals
     low, upp, low_new, upp_new = lowupp
 
-    nrej = ncombine - n_finite_old  # same as nrej_old at the moment
+    nrej = ncombine - n_finite_old
     k = 0
     # mask_pix is where **NO** rejection should occur.
-    while k < maxiters:
-        cen = cenfunc(_arr, axis=0)
-        if ccdclip:
-            # use absolute of cen to avoid NaN from negative pixels.
-            std = np.sqrt(
-                np.abs((1 + snoise_ref)
-                       * (cen + zero_ref)
-                       * scale_ref)  # restore zeroing & scaling
-                + rdnoise_ref**2)
-        else:
-            std = bn.nanstd(_arr, axis=0, ddof=ddof)
-        low_new[~mask_pix] = (cen - sigma_lower*std)[~mask_pix]
-        upp_new[~mask_pix] = (cen + sigma_upper*std)[~mask_pix]
+    if (nkeep == 0) and (maxrej == ncombine):
+        print("nkeep, maxrej turned off.")
+        # no need to check mask_pix iteratively
+        while k < maxiters:
+            cen, std = __calc_censtd(_arr=_arr)
+            low_new[~mask_pix] = (cen - sigma_lower*std)[~mask_pix]
+            upp_new[~mask_pix] = (cen + sigma_upper*std)[~mask_pix]
 
-        # In numpy, > or < automatically applies along axis=0!!
-        mask_bound = (_arr < low_new) | (_arr > upp_new) | ~np.isfinite(_arr)
-        _arr[mask_bound] = np.nan
+            # In numpy, > or < automatically applies along axis=0!!
+            mask_bound = (_arr < low_new) | (_arr > upp_new) | ~np.isfinite(_arr)
+            _arr[mask_bound] = np.nan
 
-        n_finite_new = ncombine - np.count_nonzero(mask_bound, axis=0)
-        n_change = n_finite_old - n_finite_new
-        total_change = np.sum(n_change)
+            n_finite_new = ncombine - np.count_nonzero(mask_bound, axis=0)
+            n_change = n_finite_old - n_finite_new
+            total_change = np.sum(n_change)
 
-        mask_nochange = (n_change == 0)  # identical to say "max-iter reached"
-        mask_nkeep = ((ncombine - nrej) < nkeep)
-        mask_maxrej = (nrej > maxrej)
+            mask_nochange = (n_change == 0)  # identical to say "max-iter reached"
 
-        # mask pixel position if any of these happened.
-        # Including mask_nochange here will not change results but only
-        # spend more time.
-        mask_pix = mask_nkeep | mask_maxrej
+            # no need to backup
+            if total_change == 0:
+                break
 
-        # revert to the previous ones if masked.
-        # By doing this, pixels which was mask_nkeep now, e.g., will
-        # again be True in mask_nkeep in the next iter but unchanged.
-        # This should be done at every iteration (unfortunately)
-        # because, e.g., if nkeep is very large, excessive rejection may
-        # happen for many times, and the restoration CANNOT be done
-        # after all the iterations.
-        low_new[mask_pix] = low[mask_pix].copy()
-        upp_new[mask_pix] = upp[mask_pix].copy()
-        low = low_new
-        upp = upp_new
+            # I put the test below because I thought it will be quicker
+            # to halt clipping if all pixels are masked. But now I feel
+            # testing this in every iteration is an unnecessary overhead
+            # for "nearly impossible" situation.
+            # - ysBach (2020-10-14 21:15:44 (KST: GMT+09:00))
+            # if np.all(mask_pix):
+            #     break
 
-        if total_change == 0:
-            break
+            # update only non-masked pixels
+            nrej[~mask_pix] = n_change[~mask_pix]
+            # update only changed pixels
+            nit[~mask_nochange] += 1
+            k += 1
+            n_finite_old = n_finite_new
 
-        if np.all(mask_pix):
-            break
+    else:
+        while k < maxiters:
+            cen, std = __calc_censtd(_arr=_arr)
+            low_new[~mask_pix] = (cen - sigma_lower*std)[~mask_pix]
+            upp_new[~mask_pix] = (cen + sigma_upper*std)[~mask_pix]
 
-        # update only non-masked pixels
-        nrej[~mask_pix] = n_change[~mask_pix]
-        # update only changed pixels
-        nit[~mask_nochange] += 1
-        k += 1
-        n_finite_old = n_finite_new
+            # In numpy, > or < automatically applies along axis=0!!
+            mask_bound = (_arr < low_new) | (_arr > upp_new) | ~np.isfinite(_arr)
+            _arr[mask_bound] = np.nan
+
+            n_finite_new = ncombine - np.count_nonzero(mask_bound, axis=0)
+            n_change = n_finite_old - n_finite_new
+            total_change = np.sum(n_change)
+
+            mask_nochange = (n_change == 0)  # identical to say "max-iter reached"
+            mask_nkeep = ((ncombine - nrej) < nkeep)
+            mask_maxrej = (nrej > maxrej)
+
+            # mask pixel position if any of these happened.
+            # Including mask_nochange here will not change results but only
+            # spend more time.
+            mask_pix = mask_nkeep | mask_maxrej
+
+            # revert to the previous ones if masked.
+            # By doing this, pixels which was mask_nkeep now, e.g., will
+            # again be True in mask_nkeep in the next iter but unchanged.
+            # This should be done at every iteration (unfortunately)
+            # because, e.g., if nkeep is very large, excessive rejection may
+            # happen for many times, and the restoration CANNOT be done
+            # after all the iterations.
+            low_new[mask_pix] = low[mask_pix].copy()
+            upp_new[mask_pix] = upp[mask_pix].copy()
+            low = low_new
+            upp = upp_new
+
+            if total_change == 0:
+                break
+
+            # I put the test below because I thought it will be quicker
+            # to halt clipping if all pixels are masked. But now I feel
+            # testing this in every iteration is an unnecessary overhead
+            # for "nearly impossible" situation.
+            # - ysBach (2020-10-14 21:15:44 (KST: GMT+09:00))
+            # if np.all(mask_pix):
+            #     break
+
+            # update only non-masked pixels
+            nrej[~mask_pix] = n_change[~mask_pix]
+            # update only changed pixels
+            nit[~mask_nochange] += 1
+            k += 1
+            n_finite_old = n_finite_new
 
     mask = mask_nan | (arr < low_new) | (arr > upp_new)
 
@@ -196,7 +244,7 @@ def _minmax(
         arr, mask=None, q_low=0, q_upp=0, cenfunc='median'
 ):
     # General setup (nkeep and maxrej as dummy)
-    _arr, _masks, _, cenfunc, _nvals, lowupp = _setup_reject(
+    _arr, _masks, _, cenfunc, _nvals = _setup_reject(
         arr=arr, mask=mask, nkeep=1, maxrej=None, cenfunc=cenfunc
     )
     # mask == input_mask | ~isfinite

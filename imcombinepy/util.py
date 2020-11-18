@@ -315,7 +315,7 @@ def _setup_reject(arr, mask, nkeep, maxrej, cenfunc):
     n_nan = np.count_nonzero(mask_nan, axis=0).astype(int_dtype)
     n_finite_old = ncombine - n_nan  # num of remaining pixels
 
-    # Initiate
+    # Initiate with min/max, not something like std.
     low = bn.nanmin(_arr, axis=0)
     upp = bn.nanmax(_arr, axis=0)
     low_new = low.copy()
