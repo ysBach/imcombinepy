@@ -1,5 +1,9 @@
 # imcombinepy
 
+**NOTE**: ``imcombinepy`` is combined into [``ysfitsutilpy.imutil`` module](https://github.com/ysBach/ysfitsutilpy) as of 2020-12-23.
+
+
+
 A python package to replace IRAF imcombine with both python and CLI interface using bottleneck.
 
 [Online documentation here](http://htmlpreview.github.io/?https://github.com/ysBach/imcombinepy/blob/master/docs/_build/html/index.html)
